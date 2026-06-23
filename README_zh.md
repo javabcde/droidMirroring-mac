@@ -101,3 +101,4 @@ MIT License
 ## 支持
 
 - 问题反馈 & 建议：[Issues](https://github.com/matyle/droidMirroring-mac/issues)
+- 在 X 上关注：[@tan_maty](https://x.com/tan_maty)
