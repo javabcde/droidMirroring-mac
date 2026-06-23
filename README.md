@@ -2,11 +2,11 @@
 
 Mirror your Android device screen to Mac natively. Low latency, full control.
 
-将 Android 设备屏幕镜像到 Mac 上的原生应用。低延迟，全控制。
-
 ![Platform](https://img.shields.io/badge/platform-macOS%2015%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Universal](https://img.shields.io/badge/arch-Universal%20%28ARM64%20%2B%20x86__64%29-lightgrey)
+
+[中文版文档 →](README_zh.md)
 
 ---
 
@@ -21,7 +21,7 @@ Mirror your Android device screen to Mac natively. Low latency, full control.
 
 ---
 
-## Features / 功能特性
+## Features
 
 - 📱 **Real-time Mirroring** — Low-latency screen mirroring via scrcpy
 - 🖥️ **Desktop Mode** — Run Android desktop on Mac (Android 14+)
@@ -31,15 +31,7 @@ Mirror your Android device screen to Mac natively. Low latency, full control.
 - 🎬 **Screen Recording** — Record device screen directly
 - 🔀 **Universal Binary** — Native support for Apple Silicon & Intel Mac
 
-- 📱 **实时镜像** — 通过 scrcpy 实现低延迟屏幕镜像
-- 🖥️ **桌面模式** — 在 Mac 上运行 Android 桌面（需 Android 14+）
-- 📁 **文件管理** — 通过 ADB 浏览和传输文件
-- ⌨️ **键盘鼠标** — 完整的 Mac 输入支持
-- 📡 **USB 和 Wi-Fi** — 有线或无线连接
-- 🎬 **屏幕录制** — 直接录制设备屏幕
-- 🔀 **通用二进制** — 原生支持 Apple Silicon 和 Intel Mac
-
-## Download / 下载
+## Download
 
 | Version | Architecture | Download |
 |---------|-------------|----------|
@@ -47,7 +39,7 @@ Mirror your Android device screen to Mac natively. Low latency, full control.
 
 > Requires macOS 15.0 (Sequoia) or later.
 
-## Quick Start / 快速开始
+## Quick Start
 
 ### USB Connection
 
@@ -63,42 +55,28 @@ Mirror your Android device screen to Mac natively. Low latency, full control.
 2. Follow the pairing code prompt
 3. Ensure both devices are on the same network
 
-### USB 连接（中文说明）
-
-1. 在 Android 设备上开启 **USB 调试**：
-   - 设置 → 关于手机 → 连续点击"版本号"7次
-   - 设置 → 开发者选项 → 开启"USB调试"
-2. 使用 USB 线连接 Mac
-3. 在 Android 上点击"允许"授权
-
-### Wi-Fi 无线配对
-
-1. 点击主界面 **"Pair over Wi-Fi"** 按钮
-2. 按照提示输入配对码
-3. 确保 Mac 和 Android 在同一网络
-
-## FAQ / 常见问题
+## FAQ
 
 <details>
-<summary><b>Device not detected? / 检测不到设备？</b></summary>
+<summary><b>Device not detected?</b></summary>
 
-- Make sure USB debugging is enabled / 确认 USB 调试已开启
-- Try a different USB cable / 尝试更换 USB 数据线
+- Make sure USB debugging is enabled
+- Try a different USB cable
 - Run `adb devices` in Terminal to verify connection
 </details>
 
 <details>
-<summary><b>Mirroring is laggy? / 镜像画面卡顿？</b></summary>
+<summary><b>Mirroring is laggy?</b></summary>
 
-- Use USB connection instead of Wi-Fi / 无线连接时尝试改用 USB 连接
-- Lower the device screen resolution / 降低设备屏幕分辨率
+- Use USB connection instead of Wi-Fi
+- Lower the device screen resolution
 </details>
 
-## License / 许可证
+## License
 
 MIT License
 
-## Support / 支持
+## Support
 
 - Bug reports: [Issues](https://github.com/matyle/droidMirroring-mac/issues)
 - Code repository: [DroidMirroring](https://github.com/matyle/DroidMirroring)
