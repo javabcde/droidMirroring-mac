@@ -110,3 +110,12 @@ MIT License
 
 - Bug reports & feedback: [Issues](https://github.com/matyle/droidMirroring-mac/issues)
 - Follow on X: [@tan_maty](https://x.com/tan_maty)
+
+## Attribution
+
+This project uses the following open source software:
+
+- [scrcpy](https://github.com/Genymobile/scrcpy) by Genymobile — Apache License 2.0
+- [adb (Android Debug Bridge)](https://developer.android.com/tools/adb) by Google — Apache License 2.0
+
+scrcpy-server.jar is bundled under the terms of the Apache License 2.0.
