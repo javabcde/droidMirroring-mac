@@ -1,0 +1,104 @@
+name: 🐛 Bug Report
+description: Report a bug or issue with DroidMirroring
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue! Please fill in the details below.
+
+  - type: dropdown
+    id: os_version
+    attributes:
+      label: macOS Version
+      description: What version of macOS are you running?
+      options:
+        - macOS 15.0 (Sequoia)
+        - macOS 15.1
+        - macOS 15.2
+        - macOS 15.3
+        - macOS 15.4
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: chip
+    attributes:
+      label: Mac Chip
+      options:
+        - Apple Silicon (M1/M2/M3/M4)
+        - Intel
+    validations:
+      required: true
+
+  - type: input
+    id: app_version
+    attributes:
+      label: DroidMirroring Version
+      description: Check via DroidMirroring → About, or the DMG filename
+      placeholder: "e.g. v0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: android_device
+    attributes:
+      label: Android Device Model & Version
+      placeholder: "e.g. Samsung Galaxy S24, Android 15"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection_type
+    attributes:
+      label: Connection Type
+      options:
+        - USB
+        - Wi-Fi
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: What happened? What did you expect to happen?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error '...'
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console Logs
+      description: |
+        Open Console.app, search for `subsystem:com.droidmirroring.app`, then paste relevant logs.
+        Or run: `log show --predicate 'subsystem=="com.droidmirroring.app"' --last 10m`
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Add screenshots if applicable
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Checklist
+      options:
+        - label: I have tried the latest version from [Releases](https://github.com/matyle/droidMirroring-mac/releases/latest)
+          required: true
+        - label: I have included all relevant details above
+          required: true
+        - label: I have checked existing issues to avoid duplicates
+          required: true

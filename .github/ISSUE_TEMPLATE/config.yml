@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions
+    url: https://github.com/matyle/MacDros/discussions
+    about: Ask questions, share use-cases, or pitch ideas before opening an issue.
+  - name: Security disclosure
+    url: https://github.com/matyle/MacDros/security/policy
+    about: Found a vulnerability? Email instead of opening a public issue.
