@@ -94,6 +94,14 @@ Mirror your Android device screen to Mac natively. Low latency, full control.
 - Lower the device screen resolution
 </details>
 
+<details>
+<summary><b>Can't control device (mouse/keyboard not working)?</b></summary>
+
+- **Xiaomi/Redmi/POCO users:** You must enable **"USB debugging (Security settings)"** in Developer Options, in addition to regular "USB debugging". This permission allows ADB to simulate touch and keyboard input. Without it, mirroring works but you cannot click or type.
+- This applies to both USB and Wi-Fi connections.
+- After enabling, reconnect the device and try again.
+</details>
+
 ## License
 
 MIT License
