@@ -31,13 +31,13 @@ Mirror your Android device screen to Mac natively. Low latency, full control.
 
 ## Features
 
-- 📱 **Real-time Mirroring** — Low-latency screen mirroring via scrcpy
-- 🖥️ **Desktop Mode** — Run Android desktop on Mac (Android 14+)
-- 📁 **File Manager** — Browse and transfer files via ADB
-- ⌨️ **Keyboard & Mouse** — Full Mac input support
-- 📡 **USB & Wi-Fi** — Wired or wireless connection
-- 🎬 **Screen Recording** — Record device screen directly
-- 🔀 **Universal Binary** — Native support for Apple Silicon & Intel Mac
+- 📱 **Real-time Mirroring** — H.265 via VideoToolbox, Metal rendering, sub-80ms latency
+- 🖥️ **Desktop Mode** — Samsung DeX, Android 14+ freeform virtual display
+- 📁 **File Manager** — ADB sync with drag-drop, APK install, image thumbnails
+- ⌨️ **Keyboard & Mouse** — Full input support with two-way clipboard sync
+- 📡 **USB & Wi-Fi** — Plug-and-go or Android 11+ wireless pairing
+- 🎬 **Screen Recording** — Record device screen to mp4
+- 🔀 **Universal Binary** — Native on Apple Silicon & Intel
 
 ## Download
 
