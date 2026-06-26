@@ -167,9 +167,10 @@ final class MirrorWindowController: NSWindowController {
         }
       }
       // Restore screen power before tearing down so we don't leave the device
-      // dark after disconnect.
+      // dark after disconnect. Use KEYCODE_POWER for compatibility.
       if isScreenOff, let writer = await session.control {
-        try? await writer.send(.setScreenPowerMode(2))
+        try? await writer.send(.keycode(26, action: .down))  // KEYCODE_POWER down
+        try? await writer.send(.keycode(26, action: .up))    // KEYCODE_POWER up
       }
       await session.stop()
     }
@@ -210,8 +211,10 @@ final class MirrorWindowController: NSWindowController {
 
     // Privacy preference — black out the device panel right after the first
     // frame so we don't surprise the user by displaying their lock screen.
+    // Use KEYCODE_POWER for true screen off (not just brightness=0).
     if autoScreenOff {
-      try? await writer.send(.setScreenPowerMode(0))
+      try? await writer.send(.keycode(26, action: .down))  // KEYCODE_POWER down
+      try? await writer.send(.keycode(26, action: .up))    // KEYCODE_POWER up
       await MainActor.run {
         self.isScreenOff = true
         self.window?.toolbar?.validateVisibleItems()
@@ -264,11 +267,11 @@ final class MirrorWindowController: NSWindowController {
   }
 
   @objc private func wakeDevice() {
-    // Use screen power mode 2 (normal) instead of KEYCODE_POWER
-    // This properly wakes the device screen
+    // Use KEYCODE_POWER to properly wake the device screen
     Task {
       if let writer = await session.control {
-        try? await writer.send(.setScreenPowerMode(2))
+        try? await writer.send(.keycode(26, action: .down))  // KEYCODE_POWER down
+        try? await writer.send(.keycode(26, action: .up))    // KEYCODE_POWER up
       }
     }
     isScreenOff = false
