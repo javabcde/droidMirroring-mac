@@ -416,6 +416,38 @@ final class SessionCoordinator: ObservableObject {
     await controller.bindControl()
   }
 
+  /// Tear down and re-launch the scrcpy session for `serial` without closing
+  /// the mirror window.  Used when a runtime setting (audio output mode)
+  /// changes and requires a new server-side configuration.  The controller's
+  /// `isRestarting` flag is set by the caller so `bindControl()` can skip
+  /// one-shot initialisation (auto-screen-off, audio mute, clipboard reset).
+  func restartMirror(for serial: String) async {
+    guard let controller = mirrorWindows[serial] else { return }
+    pollTasks[serial]?.cancel()
+    pollTasks[serial] = nil
+    let displayId = activePanel[serial]?.id ?? 0
+
+    let device = Device(
+      id: serial,
+      model: await controller.session.deviceName,
+      state: .online
+    )
+
+    await controller.session.stop()
+
+    do {
+      try await launchSession(for: device, displayId: displayId, into: controller)
+      startActiveDisplayPolling(for: device)
+      log.notice("session restarted for \(serial)")
+    } catch {
+      log.error("restart failed for \(serial): \(error)")
+      controller.isRestarting = false
+      controller.close()
+      mirrorWindows.removeValue(forKey: serial)
+      activePanel.removeValue(forKey: serial)
+    }
+  }
+
   // MARK: fold/unfold polling
 
   private func startActiveDisplayPolling(for device: Device) {
