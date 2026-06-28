@@ -1,5 +1,7 @@
 import AppKit
+import Carbon.HIToolbox
 import ScrcpyClient
+
 
 /// NSView that owns the Metal layer AND captures pointer/key events for the mirror session.
 /// Coordinates are translated from view-local points to device pixels and sent on
@@ -68,20 +70,25 @@ final class MirrorEventView: NSView, NSTextInputClient {
 
     guard let textToInsert, !textToInsert.isEmpty else { return }
 
-    // Clear any marked text state
-    markedText = nil
-    isComposingIME = false
+    // ─ IME guard ──────────────────────────────────────────────────────────────────
+    // Some IMEs (WeChat, Sogou) call insertText with raw pinyin letters as a
+    // side-effect of handleEvent WITHOUT first calling setMarkedText.
+    // We must swallow those letters.  Check three signals:
+    //   1. isComposingIME  — our flag, set by setMarkedText
+    //   2. markedText      — non-nil means the IME set marked text
+    //   3. isCJKIMEActive  — keyboard input source is a CJK IME
+    let viaFlag   = self.isComposingIME
+    let viaMarked = self.markedText != nil
+    let viaSource = isCJKIMEActive
+    let isComposing = viaFlag || viaMarked || viaSource
 
-    // ── IME guard ──────────────────────────────────────────────────────────
-    // When the IME is actively composing (setMarkedText was called), some
-    // macOS configurations call insertText with the raw pinyin / romaji
-    // letters as a side-effect of interpretKeyEvents.  We must NOT forward
-    // those letters — the final committed text will arrive in a later call.
-    // We detect this by checking whether the text is pure ASCII while the
-    // IME is still in a composition session.
-    if isComposingIME && textToInsert.allSatisfy({ $0.isASCII }) {
+    if isComposing && textToInsert.allSatisfy({ $0.isASCII }) {
       return   // letters during composition — swallow
     }
+
+    // Safe to clear IME state now
+    markedText = nil
+    isComposingIME = false
 
     if textToInsert.allSatisfy({ $0.isASCII }) {
       // ASCII — direct keycode injection works fine
@@ -231,12 +238,25 @@ final class MirrorEventView: NSView, NSTextInputClient {
 
   // MARK: keyboard
 
+  /// Returns true when the active keyboard input source is a CJK IME
+  /// (Chinese / Japanese / Korean).  Third-party IMEs (WeChat, Sogou, …)
+  /// sometimes don't call setMarkedText, so we fall back to this check.
+  private var isCJKIMEActive: Bool {
+    guard let src = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else { return false }
+    guard let namePtr = TISGetInputSourceProperty(src, kTISPropertyLocalizedName) else { return false }
+    let name = Unmanaged<CFString>.fromOpaque(namePtr).takeUnretainedValue() as String
+    let lower = name.lowercased()
+    return lower.contains("pinyin") || lower.contains("wubi") || lower.contains("cangjie")
+        || lower.contains("bopomofo") || lower.contains("japanese") || lower.contains("korean")
+        || lower.contains("简体") || lower.contains("繁体") || lower.contains("拼音")
+        || lower.contains("五笔") || lower.contains("仓颉") || lower.contains("注音")
+        || lower.contains("微信") || lower.contains("搜狗") || lower.contains("百度")
+  }
+
   override func keyDown(with event: NSEvent) {
     // Android KEYCODE_* for special keys (Enter, Tab, Backspace, arrows, etc.)
     if let keycode = MirrorKeyMap.androidKeycode(for: event) {
-      // If there's pending IME composition, commit it first before sending the keycode
       if let marked = markedText, marked.length > 0 {
-        // Pending marked text — send via clipboard (CJK-safe)
         let text = marked.string
         markedText = nil
         isComposingIME = false
@@ -249,14 +269,13 @@ final class MirrorEventView: NSView, NSTextInputClient {
       controlSink?(.keycode(keycode, action: .down, metaState: MirrorKeyMap.metaState(for: event)))
       return
     }
-    // For regular character keys, let the IME system handle it.
-    // This interprets the key event through the NSTextInputClient pipeline,
-    // which handles marked text (Chinese pinyin, Japanese kana, etc.)
+    // Route through the text input pipeline.
+    // handleEvent is the lower-level entry point that properly engages the IME.
     let hadMarkedText = isComposingIME
-    interpretKeyEvents([event])
-    // If interpretKeyEvents didn't trigger the IME (no setMarkedText/insertText)
-    // but the event carries non-ASCII characters (direct IME output on some
-    // macOS versions), send them via clipboard.
+    let cjkActive = isCJKIMEActive
+    inputContext?.handleEvent(event)
+    // Fallback: if the IME didn't engage but the event carries non-ASCII
+    // characters (direct IME output), send via clipboard.
     if !isComposingIME, !hadMarkedText,
        let chars = event.characters, !chars.isEmpty, !chars.allSatisfy({ $0.isASCII }) {
       controlSink?(.setClipboard(text: chars, paste: true))
