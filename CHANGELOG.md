@@ -2,6 +2,13 @@
 
 All notable changes to DroidMirroring will be documented in this file.
 
+## [v1.4.0] - 2026-06-29
+
+### Changed
+- **悬浮工具栏简化**：移除独立的文件/桌面按钮，只保留 `⋯` 按钮
+- `⋯` 按钮悬停 250ms 自动弹出 More 面板（含文件、桌面、返回、主页、截图等全部操作）
+- More 面板改为 4 列网格布局，更紧凑，宽度 340pt
+
 ## [v1.2.0] - 2026-06-29
 
 ### Added

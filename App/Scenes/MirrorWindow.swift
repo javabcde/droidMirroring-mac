@@ -131,9 +131,7 @@ final class MirrorWindowController: NSWindowController {
     // Custom HUD-style overlay bar in the chrome strip above the bezel.
     // Floats next to (not over) the device content.
     let overlay = MirrorOverlayBar(
-      onFiles:   { [weak self] in self?.openFiles() },
-      onDesktop: { [weak self] in self?.openDesktop() },
-      onMore:    { [weak self] anchor in self?.showMoreMenu(anchor: anchor) }
+      onMore: { [weak self] anchor in self?.showMoreMenu(anchor: anchor) }
     )
     self.overlayBar = overlay
     container.addSubview(overlay)
@@ -544,6 +542,8 @@ final class MirrorWindowController: NSWindowController {
       onBack:       { [weak self] in dismiss(); self?.sendBack() },
       onHome:       { [weak self] in dismiss(); self?.sendHome() },
       onRecents:    { [weak self] in dismiss(); self?.sendRecents() },
+      onFiles:      { [weak self] in dismiss(); self?.openFiles() },
+      onDesktop:    { [weak self] in dismiss(); self?.openDesktop() },
       onScreenshot: { [weak self] in dismiss(); self?.takeScreenshot() },
       onRecord:     { [weak self] in dismiss(); self?.toggleRecord() },
       onRotate:     { [weak self] in dismiss(); self?.rotateDevice() },
@@ -730,6 +730,8 @@ struct MoreActionsPanel: View {
   let onBack: () -> Void
   let onHome: () -> Void
   let onRecents: () -> Void
+  let onFiles: () -> Void
+  let onDesktop: () -> Void
   let onScreenshot: () -> Void
   let onRecord: () -> Void
   let onRotate: () -> Void
@@ -756,41 +758,38 @@ struct MoreActionsPanel: View {
   }
 
   var body: some View {
-    VStack(spacing: 8) {
-      HStack(spacing: 8) {
-        Tile(symbol: "chevron.backward", label: String(localized: "Back"),    action: onBack)
-        Tile(symbol: "circle",           label: String(localized: "Home"),    action: onHome)
-        Tile(symbol: "square.stack",     label: String(localized: "Recents"), action: onRecents)
-      }
-      HStack(spacing: 8) {
-        Tile(symbol: "camera",                          label: String(localized: "Capture"), action: onScreenshot)
-        Tile(symbol: state.isRecording ? "stop.circle.fill" : "record.circle",
-             label: state.isRecording ? String(localized: "Stop") : String(localized: "Record"),
-             tint: state.isRecording ? .red : nil,
-             action: onRecord)
-        Tile(symbol: "rotate.right",                    label: String(localized: "Rotate"),  action: onRotate)
-      }
-      HStack(spacing: 8) {
-        Tile(symbol: state.isClipboardSyncing ? "doc.on.clipboard.fill" : "doc.on.clipboard",
-             label: String(localized: "Clipboard"),
-             tint: state.isClipboardSyncing ? .accentColor : nil,
-             action: onClipboard)
-        Tile(symbol: state.isScreenOff ? "moon.fill" : "moon",
-             label: state.isScreenOff ? String(localized: "Wake") : String(localized: "Sleep"),
-             tint: state.isScreenOff ? .yellow : nil,
-             action: onScreenOff)
-        Tile(symbol: audioSymbol, label: audioLabel, action: onCycleAudio)
-      }
-      HStack(spacing: 8) {
-        Tile(symbol: "power", label: String(localized: "Power"), action: onWake)
-        Tile(symbol: state.isPinned ? "pin.fill" : "pin",
-             label: String(localized: "Pin"),
-             tint: state.isPinned ? .accentColor : nil,
-             action: onPin)
-      }
+    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+      Tile(symbol: "chevron.backward", label: String(localized: "Back"),    action: onBack)
+      Tile(symbol: "circle",           label: String(localized: "Home"),    action: onHome)
+      Tile(symbol: "square.stack",     label: String(localized: "Recents"), action: onRecents)
+      Tile(symbol: "folder",           label: String(localized: "Files"),   action: onFiles)
+
+      Tile(symbol: "display",          label: String(localized: "Desktop"), action: onDesktop)
+      Tile(symbol: "camera",           label: String(localized: "Capture"), action: onScreenshot)
+      Tile(symbol: state.isRecording ? "stop.circle.fill" : "record.circle",
+           label: state.isRecording ? String(localized: "Stop") : String(localized: "Record"),
+           tint: state.isRecording ? .red : nil,
+           action: onRecord)
+      Tile(symbol: "rotate.right",     label: String(localized: "Rotate"),  action: onRotate)
+
+      Tile(symbol: state.isClipboardSyncing ? "doc.on.clipboard.fill" : "doc.on.clipboard",
+           label: String(localized: "Clipboard"),
+           tint: state.isClipboardSyncing ? .accentColor : nil,
+           action: onClipboard)
+      Tile(symbol: state.isScreenOff ? "moon.fill" : "moon",
+           label: state.isScreenOff ? String(localized: "Wake") : String(localized: "Sleep"),
+           tint: state.isScreenOff ? .yellow : nil,
+           action: onScreenOff)
+      Tile(symbol: audioSymbol, label: audioLabel, action: onCycleAudio)
+      Tile(symbol: state.isPinned ? "pin.fill" : "pin",
+           label: String(localized: "Pin"),
+           tint: state.isPinned ? .accentColor : nil,
+           action: onPin)
+
+      Tile(symbol: "power", label: String(localized: "Power"), action: onWake)
     }
     .padding(12)
-    .frame(width: 280)
+    .frame(width: 340)
   }
 }
 
@@ -825,38 +824,34 @@ private struct Tile: View {
   }
 }
 
-// MARK: MirrorOverlayBar — floating HUD-style control strip
+// MARK: MirrorOverlayBar — single ⋯ button that reveals the More popover on hover
 
-/// Small blurred pill that floats on the top bezel strip. Hosts the
-/// inter-mode actions (Files / Desktop). Designed to feel like iPhone
-/// Mirroring's tab strip — fades in/out with the rest of the window chrome.
+/// A tiny dark pill with a "⋯" glyph that floats on the chrome strip above
+/// the phone bezel.  Hovering reveals the More-actions popover (which now
+/// also contains Files and Desktop).  Click also toggles the popover.
 final class MirrorOverlayBar: NSView {
-  private let onFiles: () -> Void
-  private let onDesktop: () -> Void
+  /// Called when the user triggers the ⋯ button (hover or click).
   private let onMore: (NSView) -> Void
 
-  /// Expose the "more" button so the controller can attach the popover to it
-  /// for the ⌘. keyboard shortcut.
+  /// Expose the button so the controller can anchor the popover for the ⌘. shortcut.
   private(set) var moreButton: NSButton?
 
-  private var moreHoverTimer: Timer?
-  private var moreTracking: NSTrackingArea?
+  private var hoverTimer: Timer?
+  private var hoverTracking: NSTrackingArea?
 
-  init(onFiles: @escaping () -> Void,
-       onDesktop: @escaping () -> Void,
-       onMore: @escaping (NSView) -> Void) {
-    self.onFiles = onFiles
-    self.onDesktop = onDesktop
+  // MARK: init
+
+  init(onMore: @escaping (NSView) -> Void) {
     self.onMore = onMore
     super.init(frame: .zero)
     wantsLayer = true
     layer?.cornerCurve = .continuous
 
-    // Solid dark bar — no glass effect. Completely invisible when alpha=0.
+    // --- dark pill background ---
     let barBg = NSView()
     barBg.wantsLayer = true
     barBg.layer?.backgroundColor = NSColor(white: 0.0, alpha: 0.85).cgColor
-    barBg.layer?.cornerRadius = 12
+    barBg.layer?.cornerRadius = 14
     barBg.layer?.cornerCurve = .continuous
     addSubview(barBg)
     barBg.translatesAutoresizingMaskIntoConstraints = false
@@ -867,88 +862,64 @@ final class MirrorOverlayBar: NSView {
       barBg.bottomAnchor.constraint(equalTo: bottomAnchor),
     ])
 
-    let filesBtn = makeButton(symbol: "folder", tooltip: String(localized: "Files"), action: #selector(filesTapped))
-    let desktopBtn = makeButton(symbol: "display", tooltip: String(localized: "Desktop"), action: #selector(desktopTapped))
-    let moreBtn = makeButton(symbol: "ellipsis", tooltip: String(localized: "More"), action: #selector(moreTapped))
-    self.moreButton = moreBtn
-
-    let stack = NSStackView(views: [filesBtn, desktopBtn, moreBtn])
-    stack.orientation = .horizontal
-    stack.spacing = 6
-    stack.edgeInsets = NSEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
-    addSubview(stack)
-    stack.translatesAutoresizingMaskIntoConstraints = false
+    // --- ⋯ button ---
+    let symCfg = NSImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+    let img = NSImage(systemSymbolName: "ellipsis", accessibilityDescription: String(localized: "More"))?
+      .withSymbolConfiguration(symCfg) ?? NSImage()
+    let btn = NSButton(image: img, target: self, action: #selector(buttonTapped))
+    btn.isBordered = false
+    btn.bezelStyle = .smallSquare
+    btn.contentTintColor = .white
+    btn.toolTip = String(localized: "More")
+    btn.imageScaling = .scaleProportionallyDown
+    btn.setContentHuggingPriority(.required, for: .horizontal)
+    self.moreButton = btn
+    addSubview(btn)
+    btn.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([
-      stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-      stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-      stack.topAnchor.constraint(equalTo: topAnchor),
-      stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+      btn.centerXAnchor.constraint(equalTo: centerXAnchor),
+      btn.centerYAnchor.constraint(equalTo: centerYAnchor),
     ])
+
+    // Fixed pill size.
+    widthAnchor.constraint(equalToConstant: 44).isActive = true
+    heightAnchor.constraint(equalToConstant: 28).isActive = true
   }
 
   required init?(coder: NSCoder) { fatalError() }
 
-  /// Set up NSTrackingArea scoped to the "more" button's frame so that only
-  /// hovering over the ellipsis (not the entire bar) triggers the popover.
+  // MARK: hover tracking
+
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
-    if let t = moreTracking { removeTrackingArea(t) }
-    // Convert the more button's frame into our own coordinate space.
-    let rect: NSRect
-    if let btn = moreButton {
-      rect = convert(btn.bounds, from: btn)
-    } else {
-      rect = .zero
-    }
+    if let t = hoverTracking { removeTrackingArea(t) }
     let t = NSTrackingArea(
-      rect: rect,
-      options: [.mouseEnteredAndExited, .activeInKeyWindow],
+      rect: .zero,
+      options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
       owner: self,
-      userInfo: ["target": "more"]
+      userInfo: nil
     )
     addTrackingArea(t)
-    moreTracking = t
+    hoverTracking = t
   }
 
   override func mouseEntered(with event: NSEvent) {
-    guard let userInfo = event.trackingArea?.userInfo,
-          userInfo["target"] as? String == "more",
-          let btn = moreButton else {
-      super.mouseEntered(with: event); return
-    }
-    moreHoverTimer?.invalidate()
-    moreHoverTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
-      guard let self else { return }
+    hoverTimer?.invalidate()
+    hoverTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
+      guard let self, let btn = self.moreButton else { return }
       Task { @MainActor in self.onMore(btn) }
     }
   }
 
   override func mouseExited(with event: NSEvent) {
-    guard let userInfo = event.trackingArea?.userInfo,
-          userInfo["target"] as? String == "more" else {
-      super.mouseExited(with: event); return
-    }
-    moreHoverTimer?.invalidate()
-    moreHoverTimer = nil
+    hoverTimer?.invalidate()
+    hoverTimer = nil
   }
 
-  private func makeButton(symbol: String, tooltip: String, action: Selector) -> NSButton {
-    let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
-    let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)?
-      .withSymbolConfiguration(config) ?? NSImage()
-    let button = NSButton(image: image, target: self, action: action)
-    button.isBordered = false
-    button.bezelStyle = .smallSquare
-    button.contentTintColor = .white
-    button.toolTip = tooltip
-    button.imageScaling = .scaleProportionallyDown
-    button.setContentHuggingPriority(.required, for: .horizontal)
-    return button
+  @objc private func buttonTapped() {
+    guard let btn = moreButton else { return }
+    onMore(btn)
   }
-
-  @objc private func filesTapped() { onFiles() }
-  @objc private func desktopTapped() { onDesktop() }
-  @objc private func moreTapped(_ sender: NSButton) { onMore(sender) }
 }
 
 // MARK: PhoneBezelView — black rounded shell hosting the Metal mirror view
