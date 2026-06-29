@@ -25,7 +25,7 @@ final class FilesWindowController: NSWindowController {
       defer: false
     )
     let title = device.model.isEmpty ? device.id : device.model
-    window.title = "Files — \(title)"
+    window.title = String(localized: "Files — \(title)")
     window.titlebarAppearsTransparent = true
     window.toolbarStyle = .unified
     window.contentView = NSHostingView(rootView: FilesView(viewModel: vm))
@@ -90,13 +90,13 @@ struct FilesView: View {
         switch state.phase {
         case .installing:
           ProgressView().controlSize(.small)
-          Text("Installing \(state.filename)…")
+          Text(String(localized: "Installing \(state.filename)…"))
         case .succeeded(let pkg):
           Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-          Text("Installed \(pkg ?? state.filename)")
+          Text(String(localized: "Installed \(pkg ?? state.filename)"))
         case .failed(let message):
           Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
-          Text("Install failed: \(message)")
+          Text(String(localized: "Install failed: \(message)"))
             .lineLimit(2)
             .truncationMode(.middle)
         }
@@ -363,11 +363,16 @@ struct FilesView: View {
             .foregroundStyle(.orange)
           Text(err).foregroundStyle(.secondary).lineLimit(1)
         } else {
-          Text("\(viewModel.entries.count) item\(viewModel.entries.count == 1 ? "" : "s")")
-            .foregroundStyle(.secondary)
+          if viewModel.entries.count == 1 {
+            Text("1 item")
+              .foregroundStyle(.secondary)
+          } else {
+            Text(LocalizedStringKey("\(viewModel.entries.count) items"))
+              .foregroundStyle(.secondary)
+          }
           if !selection.isEmpty {
             Text("·").foregroundStyle(.tertiary)
-            Text("\(selection.count) selected").foregroundStyle(.secondary)
+            Text(LocalizedStringKey("\(selection.count) selected")).foregroundStyle(.secondary)
           }
         }
       }
@@ -438,7 +443,11 @@ private struct TransferPanel: View {
   let xfer: FilesViewModel.TransferState
   let cancel: () -> Void
 
-  private var verb: String { xfer.kind == .download ? "Downloading" : "Uploading" }
+  private var verb: String {
+    xfer.kind == .download
+      ? String(localized: "Downloading")
+      : String(localized: "Uploading")
+  }
   private var icon: String { xfer.kind == .download ? "arrow.down.circle.fill" : "arrow.up.circle.fill" }
 
   var body: some View {
@@ -459,7 +468,7 @@ private struct TransferPanel: View {
           }
           Spacer()
           if !xfer.queue.isEmpty {
-            Text("\(xfer.currentIndex + 1) of \(xfer.queue.count)")
+            Text(LocalizedStringKey("\(xfer.currentIndex + 1) of \(xfer.queue.count)"))
               .font(.caption.monospacedDigit())
               .foregroundStyle(.secondary)
           }

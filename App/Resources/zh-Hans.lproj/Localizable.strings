@@ -1,0 +1,168 @@
+/* MenuBarContent */
+"macDros" = "macDros";
+"no devices" = "无设备在线";
+"%lld device online" = "%lld 台设备在线";
+"%lld devices online" = "%lld 台设备在线";
+"Add Wireless Device…" = "添加无线设备…";
+"Settings…" = "设置…";
+"Quit macDros" = "退出 macDros";
+"No device connected" = "未连接设备";
+"Mirror" = "投屏";
+"Files" = "文件";
+"Desktop" = "桌面";
+
+/* MainView — Waiting */
+"Waiting for an Android device" = "等待 Android 设备";
+"Connect via USB or pair wirelessly to get started." = "通过 USB 连接或无线配对以开始使用。";
+"Enable USB Debugging" = "启用 USB 调试";
+"Settings → About phone → Tap \"Build number\" 7 times" = "设置 → 关于手机 → 连续点击「版本号」 7 次";
+"Then Settings → Developer options → Turn on \"USB debugging\"" = "然后 设置 → 开发者选项 → 开启「USB 调试」";
+"USB Guide" = "USB 指南";
+"Pair over Wi-Fi" = "Wi-Fi 配对";
+"Open the menu bar icon for settings · ⌘Q to quit" = "点击菜单栏图标进行设置 · ⌘Q 退出";
+"How to enable USB Debugging" = "如何启用 USB 调试";
+"1. Open Settings on your Android device\n2. Go to \"About phone\"\n3. Tap \"Build number\" 7 times to unlock Developer options\n4. Go back to Settings → \"Developer options\"\n5. Turn on \"USB debugging\"\n6. Connect your device via USB cable\n7. When prompted, tap \"Allow\" on your device" = "1. 在 Android 设备上打开设置\n2. 进入「关于手机」\n3. 连续点击「版本号」 7 次以解锁开发者选项\n4. 返回设置 → 「开发者选项」\n5. 开启「USB 调试」\n6. 通过 USB 数据线连接设备\n7. 提示时，在设备上点击「允许」";
+"OK" = "确定";
+
+/* MainView — Connected */
+"Device ready" = "设备就绪";
+"%lld devices ready" = "%lld 台设备就绪";
+"Mirror windows open automatically.\nUse the menu bar icon for settings." = "投屏窗口将自动打开。\n点击菜单栏图标进行设置。";
+
+/* MoreActionsPanel */
+"Back" = "返回";
+"Home" = "主页";
+"Recents" = "最近任务";
+"Capture" = "截屏";
+"Record" = "录屏";
+"Stop" = "停止";
+"Rotate" = "旋转";
+"Clipboard" = "剪贴板";
+"Sleep" = "息屏";
+"Wake" = "亮屏";
+"Mac" = "Mac";
+"Phone" = "手机";
+"Mute" = "静音";
+"Power" = "电源";
+"Pin" = "置顶";
+
+/* Overlay bar */
+"More" = "更多";
+
+/* Settings */
+"General" = "通用";
+"Startup" = "启动";
+"Launch at login" = "开机自启动";
+"Show menu bar icon" = "显示菜单栏图标";
+"Behavior" = "行为";
+"Open Mirror automatically when a device connects" = "连接设备时自动打开投屏";
+"iPhone-Mirroring-style: skip the picker and jump straight to the mirror window for the first online device per session." = "仿 iPhone 镜像模式：跳过选择界面，直接为第一台在线设备打开投屏窗口。";
+"Video" = "视频";
+"Codec" = "编解码器";
+"Bitrate: %lld Mbps" = "码率：%lld Mbps";
+"Max FPS: %lld" = "最高帧率：%lld";
+"Lower bitrate / FPS = less heat. For 90/120Hz devices, increase FPS for smoother motion. Defaults (4 Mbps / 30 fps) are tuned for thermals." = "较低的码率/帧率 = 更少发热。对于 90/120Hz 设备，可提高帧率以获得更流畅的画面。默认值（4 Mbps / 30 fps）针对散热进行了优化。";
+"Audio" = "音频";
+"Audio output" = "音频输出";
+"Mac speakers" = "Mac 扬声器";
+"Phone speakers / Bluetooth" = "手机扬声器 / 蓝牙";
+"  • Mac: play audio through your Mac" = "  • Mac：通过 Mac 播放音频";
+"  • Phone: audio stays on the device (use with BT speaker)" = "  • 手机：音频在设备上播放（配合蓝牙音箱使用）";
+"  • Mute: no audio at all" = "  • 静音：完全无声";
+"Privacy" = "隐私";
+"Turn off device screen on mirror start" = "投屏开始时关闭设备屏幕";
+"Keeps the phone display dark while you work on the Mac. The toolbar 🌙 button toggles it manually any time." = "在 Mac 上操作时保持手机屏幕关闭。可随时通过工具栏 🌙 按钮手动切换。";
+"Sync clipboard with device" = "与设备同步剪贴板";
+"Two-way sync between macOS pasteboard and the Android clipboard." = "macOS 剪贴板与 Android 剪贴板之间的双向同步。";
+"Advanced" = "高级";
+"Custom adb path" = "自定义 adb 路径";
+"Leave empty to use bundled adb" = "留空使用内置 adb";
+"Troubleshooting" = "故障排除";
+"✅ Cleaned up old scrcpy-server files from all connected devices." = "✅ 已清理所有已连接设备上的旧 scrcpy-server 文件。";
+"❌ Failed: %@" = "❌ 失败：%@";
+"Cleaning…" = "清理中…";
+"Clean up old scrcpy-server on devices" = "清理设备上的旧 scrcpy-server";
+"Use this if Mirror fails to connect with a protocol error. Removes leftover scrcpy-server jars from the device." = "如果投屏连接时出现协议错误，请使用此功能。将从设备中删除残留的 scrcpy-server jar 文件。";
+
+/* PairingSheet */
+"QR Code" = "二维码";
+"Pairing Code" = "配对码";
+"Manual IP" = "手动 IP";
+"Add Wireless Device" = "添加无线设备";
+"On your Android device: Settings → Developer options → Wireless debugging" = "在 Android 设备上：设置 → 开发者选项 → 无线调试";
+"Done" = "完成";
+"On Android, tap **Pair device with QR code** in Wireless debugging." = "在 Android 上，点击无线调试中的 **使用二维码配对设备**。";
+"Point the camera at this QR code." = "将摄像头对准此二维码。";
+"DroidMirroring auto-pairs as soon as the device appears." = "设备出现后 DroidMirroring 将自动配对。";
+"Pairing…" = "配对中…";
+"Regenerate" = "重新生成";
+"Found %@ — pairing…" = "发现 %@ — 正在配对…";
+"Paired — check the sidebar." = "配对成功 — 请查看侧边栏。";
+"On Android: **Pair device with pairing code**." = "在 Android 上：**使用配对码配对设备**。";
+"Pick the device below, type the 6-digit code shown on it." = "选择下方设备，输入设备上显示的 6 位配对码。";
+"Searching for devices…" = "正在搜索设备…";
+"Pair & Connect" = "配对并连接";
+"Paired — device should appear in the sidebar." = "配对成功 — 设备应出现在侧边栏中。";
+"On Android: **Wireless debugging → Pair device with pairing code**. Read off the IP, port, and 6-digit code." = "在 Android 上：**无线调试 → 使用配对码配对设备**。读取 IP、端口和 6 位配对码。";
+"Type them here — leave code blank if you've already paired this device once." = "在此输入 — 如果已配对过此设备，配对码可留空。";
+"required for first-time pairing" = "首次配对时必填";
+"Connect" = "连接";
+"Port must be a number." = "端口必须是数字。";
+"Paired. Connecting…" = "已配对，正在连接…";
+"Paired — enter the main IP:port (different number) to connect." = "已配对 — 请输入主 IP:端口（不同的端口号）进行连接。";
+"Connected." = "已连接。";
+"No wireless ADB service found on this network." = "此网络上未找到无线 ADB 服务。";
+"Pairing timed out — keep the pair screen open on the device." = "配对超时 — 请在设备上保持配对界面打开。";
+"Wrong pairing code — try again." = "配对码错误 — 请重试。";
+"Device rejected the pairing." = "设备拒绝了配对。";
+"Device is not authorized — accept the prompt on Android." = "设备未授权 — 请在 Android 上接受授权提示。";
+"Invalid address: %@" = "无效地址：%@";
+"Bundled adb is missing — reinstall DroidMirroring." = "内置 adb 丢失 — 请重新安装 DroidMirroring。";
+"adb returned an unknown error." = "adb 返回未知错误。";
+
+/* FilesView */
+"Files — %@" = "文件 — %@";
+"Device" = "设备";
+"Favorites" = "收藏";
+"Up one directory" = "上一级目录";
+"Reload" = "刷新";
+"New Folder" = "新建文件夹";
+"Upload" = "上传";
+"Download" = "下载";
+"Root" = "根目录";
+"Name" = "名称";
+"Size" = "大小";
+"Modified" = "修改时间";
+"Rename…" = "重命名…";
+"Delete" = "删除";
+"Loading…" = "加载中…";
+"Empty Folder" = "空文件夹";
+"Drag files here to upload, or pick a different folder." = "将文件拖放到此处上传，或选择其他文件夹。";
+"1 item" = "1 个项目";
+"%lld item" = "%lld 个项目";
+"%lld items" = "%lld 个项目";
+"%lld selected" = "已选择 %lld 个";
+"Downloading" = "正在下载";
+"Uploading" = "正在上传";
+"%lld of %lld" = "%lld / %lld";
+"Cancel" = "取消";
+"Installing %@" = "正在安装 %@";
+"Installed %@" = "已安装 %@";
+"Install failed: %@" = "安装失败：%@";
+"Rename Folder" = "重命名文件夹";
+"Rename File" = "重命名文件";
+"New name" = "新名称";
+"Rename" = "重命名";
+
+/* WaitingPlaceholderView */
+"No Device Connected" = "未连接设备";
+"Plug in via USB, or pair a wireless\ndevice to start mirroring." = "通过 USB 连接，或无线配对\n设备以开始投屏。";
+
+/* DroidMirroringApp — commands */
+"Refresh Active Display" = "刷新当前显示";
+"Check for Updates…" = "检查更新…";
+"Official Website" = "官方网站";
+"GitHub Repository" = "GitHub 仓库";
+
+/* Pairing window */
+"Pair a wireless device" = "配对无线设备";

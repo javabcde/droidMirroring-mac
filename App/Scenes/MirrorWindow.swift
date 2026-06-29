@@ -158,10 +158,21 @@ final class MirrorWindowController: NSWindowController {
     }
     let mask: NSEvent.EventTypeMask = [
       .mouseMoved, .leftMouseDown, .rightMouseDown, .otherMouseDown,
-      .leftMouseDragged, .scrollWheel,
+      .leftMouseDragged, .scrollWheel, .keyDown,
     ]
     mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
       if let self, event.window === self.window {
+        // ⌘. — toggle the More panel (keyboard shortcut).
+        if event.type == .keyDown,
+           event.keyCode == 47,   // "." key
+           event.modifierFlags.contains(.command) {
+          Task { @MainActor in
+            if let moreBtn = self.overlayBar?.moreButton {
+              self.showMoreMenu(anchor: moreBtn)
+            }
+          }
+          return nil  // consume the event
+        }
         Task { @MainActor in self.handleMouseMoved(event) }
       }
       return event
@@ -730,9 +741,9 @@ struct MoreActionsPanel: View {
 
   var audioLabel: String {
     switch state.audioOutput {
-    case "mac":   return "Mac"
-    case "phone": return "Phone"
-    default:      return "Mute"
+    case "mac":   return String(localized: "Mac")
+    case "phone": return String(localized: "Phone")
+    default:      return String(localized: "Mute")
     }
   }
 
@@ -747,33 +758,33 @@ struct MoreActionsPanel: View {
   var body: some View {
     VStack(spacing: 8) {
       HStack(spacing: 8) {
-        Tile(symbol: "chevron.backward", label: "Back",    action: onBack)
-        Tile(symbol: "circle",           label: "Home",    action: onHome)
-        Tile(symbol: "square.stack",     label: "Recents", action: onRecents)
+        Tile(symbol: "chevron.backward", label: String(localized: "Back"),    action: onBack)
+        Tile(symbol: "circle",           label: String(localized: "Home"),    action: onHome)
+        Tile(symbol: "square.stack",     label: String(localized: "Recents"), action: onRecents)
       }
       HStack(spacing: 8) {
-        Tile(symbol: "camera",                          label: "Capture", action: onScreenshot)
+        Tile(symbol: "camera",                          label: String(localized: "Capture"), action: onScreenshot)
         Tile(symbol: state.isRecording ? "stop.circle.fill" : "record.circle",
-             label: state.isRecording ? "Stop" : "Record",
+             label: state.isRecording ? String(localized: "Stop") : String(localized: "Record"),
              tint: state.isRecording ? .red : nil,
              action: onRecord)
-        Tile(symbol: "rotate.right",                    label: "Rotate",  action: onRotate)
+        Tile(symbol: "rotate.right",                    label: String(localized: "Rotate"),  action: onRotate)
       }
       HStack(spacing: 8) {
         Tile(symbol: state.isClipboardSyncing ? "doc.on.clipboard.fill" : "doc.on.clipboard",
-             label: "Clipboard",
+             label: String(localized: "Clipboard"),
              tint: state.isClipboardSyncing ? .accentColor : nil,
              action: onClipboard)
         Tile(symbol: state.isScreenOff ? "moon.fill" : "moon",
-             label: state.isScreenOff ? "Wake" : "Sleep",
+             label: state.isScreenOff ? String(localized: "Wake") : String(localized: "Sleep"),
              tint: state.isScreenOff ? .yellow : nil,
              action: onScreenOff)
         Tile(symbol: audioSymbol, label: audioLabel, action: onCycleAudio)
       }
       HStack(spacing: 8) {
-        Tile(symbol: "power", label: "Power", action: onWake)
+        Tile(symbol: "power", label: String(localized: "Power"), action: onWake)
         Tile(symbol: state.isPinned ? "pin.fill" : "pin",
-             label: "Pin",
+             label: String(localized: "Pin"),
              tint: state.isPinned ? .accentColor : nil,
              action: onPin)
       }
@@ -824,6 +835,13 @@ final class MirrorOverlayBar: NSView {
   private let onDesktop: () -> Void
   private let onMore: (NSView) -> Void
 
+  /// Expose the "more" button so the controller can attach the popover to it
+  /// for the ⌘. keyboard shortcut.
+  private(set) var moreButton: NSButton?
+
+  private var moreHoverTimer: Timer?
+  private var moreTracking: NSTrackingArea?
+
   init(onFiles: @escaping () -> Void,
        onDesktop: @escaping () -> Void,
        onMore: @escaping (NSView) -> Void) {
@@ -849,9 +867,10 @@ final class MirrorOverlayBar: NSView {
       barBg.bottomAnchor.constraint(equalTo: bottomAnchor),
     ])
 
-    let filesBtn = makeButton(symbol: "folder", tooltip: "Files",   action: #selector(filesTapped))
-    let desktopBtn = makeButton(symbol: "display", tooltip: "Desktop", action: #selector(desktopTapped))
-    let moreBtn = makeButton(symbol: "ellipsis", tooltip: "More", action: #selector(moreTapped))
+    let filesBtn = makeButton(symbol: "folder", tooltip: String(localized: "Files"), action: #selector(filesTapped))
+    let desktopBtn = makeButton(symbol: "display", tooltip: String(localized: "Desktop"), action: #selector(desktopTapped))
+    let moreBtn = makeButton(symbol: "ellipsis", tooltip: String(localized: "More"), action: #selector(moreTapped))
+    self.moreButton = moreBtn
 
     let stack = NSStackView(views: [filesBtn, desktopBtn, moreBtn])
     stack.orientation = .horizontal
@@ -868,6 +887,50 @@ final class MirrorOverlayBar: NSView {
   }
 
   required init?(coder: NSCoder) { fatalError() }
+
+  /// Set up NSTrackingArea scoped to the "more" button's frame so that only
+  /// hovering over the ellipsis (not the entire bar) triggers the popover.
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    if let t = moreTracking { removeTrackingArea(t) }
+    // Convert the more button's frame into our own coordinate space.
+    let rect: NSRect
+    if let btn = moreButton {
+      rect = convert(btn.bounds, from: btn)
+    } else {
+      rect = .zero
+    }
+    let t = NSTrackingArea(
+      rect: rect,
+      options: [.mouseEnteredAndExited, .activeInKeyWindow],
+      owner: self,
+      userInfo: ["target": "more"]
+    )
+    addTrackingArea(t)
+    moreTracking = t
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    guard let userInfo = event.trackingArea?.userInfo,
+          userInfo["target"] as? String == "more",
+          let btn = moreButton else {
+      super.mouseEntered(with: event); return
+    }
+    moreHoverTimer?.invalidate()
+    moreHoverTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
+      guard let self else { return }
+      Task { @MainActor in self.onMore(btn) }
+    }
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    guard let userInfo = event.trackingArea?.userInfo,
+          userInfo["target"] as? String == "more" else {
+      super.mouseExited(with: event); return
+    }
+    moreHoverTimer?.invalidate()
+    moreHoverTimer = nil
+  }
 
   private func makeButton(symbol: String, tooltip: String, action: Selector) -> NSButton {
     let config = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)

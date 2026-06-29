@@ -51,8 +51,8 @@ private struct MirrorSettings: View {
           Text("H.264").tag("h264")
           Text("AV1").tag("av1")
         }
-        Stepper("Bitrate: \(bitrate) Mbps", value: $bitrate, in: 1...50)
-        Stepper("Max FPS: \(maxFps)", value: $maxFps, in: 15...120, step: 5)
+        Stepper(LocalizedStringKey("Bitrate: \(bitrate) Mbps"), value: $bitrate, in: 1...50)
+        Stepper(LocalizedStringKey("Max FPS: \(maxFps)"), value: $maxFps, in: 15...120, step: 5)
         Text("Lower bitrate / FPS = less heat. For 90/120Hz devices, increase FPS for smoother motion. Defaults (4 Mbps / 30 fps) are tuned for thermals.")
           .font(.caption)
           .foregroundStyle(.secondary)
@@ -104,9 +104,9 @@ private struct AdvancedSettings: View {
             Task {
               do {
                 try await SessionCoordinator.shared.cleanupScrcpyServers()
-                cleanResult = "✅ Cleaned up old scrcpy-server files from all connected devices."
+                cleanResult = String(localized: "✅ Cleaned up old scrcpy-server files from all connected devices.")
               } catch {
-                cleanResult = "❌ Failed: \(error.localizedDescription)"
+                cleanResult = String(localized: "❌ Failed: \(error.localizedDescription)")
               }
               cleaning = false
             }

@@ -1,0 +1,123 @@
+/* English localization — mirrors every key used in the zh-Hans file.
+   English keys in the source code already serve as fallbacks when the
+   system language is English, so this file is mainly for completeness
+   and for translators who want to see every key in one place. */
+
+/* MenuBarContent */
+"macDros" = "macDros";
+"no devices" = "no devices";
+"%lld device online" = "%lld device online";
+"%lld devices online" = "%lld devices online";
+"Add Wireless Device…" = "Add Wireless Device…";
+"Settings…" = "Settings…";
+"Quit macDros" = "Quit macDros";
+"No device connected" = "No device connected";
+"Mirror" = "Mirror";
+"Files" = "Files";
+"Desktop" = "Desktop";
+
+/* MainView — Waiting */
+"Waiting for an Android device" = "Waiting for an Android device";
+"Connect via USB or pair wirelessly to get started." = "Connect via USB or pair wirelessly to get started.";
+"Enable USB Debugging" = "Enable USB Debugging";
+"USB Guide" = "USB Guide";
+"Pair over Wi-Fi" = "Pair over Wi-Fi";
+"Open the menu bar icon for settings · ⌘Q to quit" = "Open the menu bar icon for settings · ⌘Q to quit";
+"How to enable USB Debugging" = "How to enable USB Debugging";
+"OK" = "OK";
+
+/* MainView — Connected */
+"Device ready" = "Device ready";
+"%lld devices ready" = "%lld devices ready";
+"Mirror windows open automatically.\nUse the menu bar icon for settings." = "Mirror windows open automatically.\nUse the menu bar icon for settings.";
+
+/* MoreActionsPanel */
+"Back" = "Back";
+"Home" = "Home";
+"Recents" = "Recents";
+"Capture" = "Capture";
+"Record" = "Record";
+"Stop" = "Stop";
+"Rotate" = "Rotate";
+"Clipboard" = "Clipboard";
+"Sleep" = "Sleep";
+"Wake" = "Wake";
+"Mac" = "Mac";
+"Phone" = "Phone";
+"Mute" = "Mute";
+"Power" = "Power";
+"Pin" = "Pin";
+
+/* Overlay bar */
+"More" = "More";
+
+/* Settings */
+"General" = "General";
+"Startup" = "Startup";
+"Launch at login" = "Launch at login";
+"Show menu bar icon" = "Show menu bar icon";
+"Behavior" = "Behavior";
+"Open Mirror automatically when a device connects" = "Open Mirror automatically when a device connects";
+"iPhone-Mirroring-style: skip the picker and jump straight to the mirror window for the first online device per session." = "iPhone-Mirroring-style: skip the picker and jump straight to the mirror window for the first online device per session.";
+"Video" = "Video";
+"Codec" = "Codec";
+"Bitrate: %lld Mbps" = "Bitrate: %lld Mbps";
+"Max FPS: %lld" = "Max FPS: %lld";
+"Lower bitrate / FPS = less heat. For 90/120Hz devices, increase FPS for smoother motion. Defaults (4 Mbps / 30 fps) are tuned for thermals." = "Lower bitrate / FPS = less heat. For 90/120Hz devices, increase FPS for smoother motion. Defaults (4 Mbps / 30 fps) are tuned for thermals.";
+"Audio" = "Audio";
+"Audio output" = "Audio output";
+"Mac speakers" = "Mac speakers";
+"Phone speakers / Bluetooth" = "Phone speakers / Bluetooth";
+"  • Mac: play audio through your Mac" = "  • Mac: play audio through your Mac";
+"  • Phone: audio stays on the device (use with BT speaker)" = "  • Phone: audio stays on the device (use with BT speaker)";
+"  • Mute: no audio at all" = "  • Mute: no audio at all";
+"Privacy" = "Privacy";
+"Turn off device screen on mirror start" = "Turn off device screen on mirror start";
+"Keeps the phone display dark while you work on the Mac. The toolbar 🌙 button toggles it manually any time." = "Keeps the phone display dark while you work on the Mac. The toolbar 🌙 button toggles it manually any time.";
+"Sync clipboard with device" = "Sync clipboard with device";
+"Two-way sync between macOS pasteboard and the Android clipboard." = "Two-way sync between macOS pasteboard and the Android clipboard.";
+"Advanced" = "Advanced";
+"Custom adb path" = "Custom adb path";
+"Leave empty to use bundled adb" = "Leave empty to use bundled adb";
+"Troubleshooting" = "Troubleshooting";
+"Clean up old scrcpy-server on devices" = "Clean up old scrcpy-server on devices";
+"Cleaning…" = "Cleaning…";
+"Use this if Mirror fails to connect with a protocol error. Removes leftover scrcpy-server jars from the device." = "Use this if Mirror fails to connect with a protocol error. Removes leftover scrcpy-server jars from the device.";
+
+/* PairingSheet */
+"QR Code" = "QR Code";
+"Pairing Code" = "Pairing Code";
+"Manual IP" = "Manual IP";
+"Add Wireless Device" = "Add Wireless Device";
+"On your Android device: Settings → Developer options → Wireless debugging" = "On your Android device: Settings → Developer options → Wireless debugging";
+"Done" = "Done";
+"Pairing…" = "Pairing…";
+"Regenerate" = "Regenerate";
+"Searching for devices…" = "Searching for devices…";
+"Pair & Connect" = "Pair & Connect";
+"Connect" = "Connect";
+"Cancel" = "Cancel";
+"Rename…" = "Rename…";
+"Download" = "Download";
+"Delete" = "Delete";
+"Loading…" = "Loading…";
+"Empty Folder" = "Empty Folder";
+"Drag files here to upload, or pick a different folder." = "Drag files here to upload, or pick a different folder.";
+"Cancel" = "Cancel";
+"Rename" = "Rename";
+
+/* FilesView */
+"Files — %@" = "Files — %@";
+"Device" = "Device";
+
+/* WaitingPlaceholderView */
+"No Device Connected" = "No Device Connected";
+
+/* DroidMirroringApp — commands */
+"Refresh Active Display" = "Refresh Active Display";
+"Check for Updates…" = "Check for Updates…";
+"Official Website" = "Official Website";
+"GitHub Repository" = "GitHub Repository";
+
+/* Pairing window */
+"Pair a wireless device" = "Pair a wireless device";

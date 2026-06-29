@@ -15,13 +15,16 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.10"
-    MARKETING_VERSION: "0.2.6"
+    MARKETING_VERSION: "1.2.0"
     CURRENT_PROJECT_VERSION: "1"
     OBJECT_VERSION: Xcode
     ENABLE_HARDENED_RUNTIME: YES
     SWIFT_STRICT_CONCURRENCY: off
     DEVELOPMENT_TEAM: ""             # fill in for release builds
     CODE_SIGN_STYLE: Automatic
+    KNOWN_REGIONS:
+      - zh-Hans
+      - en
 
 packages:
   ADBKit:          { path: Packages/ADBKit }

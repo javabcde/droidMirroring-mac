@@ -116,8 +116,13 @@ private struct ConnectedDevicesView: View {
         .font(.system(size: 56))
         .foregroundStyle(.green)
 
-      Text(devices.count == 1 ? "Device ready" : "\(devices.count) devices ready")
-        .font(.title3.weight(.semibold))
+      if devices.count == 1 {
+        Text("Device ready")
+          .font(.title3.weight(.semibold))
+      } else {
+        Text(LocalizedStringKey("\(devices.count) devices ready"))
+          .font(.title3.weight(.semibold))
+      }
 
       VStack(spacing: 6) {
         ForEach(devices) { device in

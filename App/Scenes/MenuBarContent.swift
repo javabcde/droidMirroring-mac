@@ -65,9 +65,15 @@ struct MenuBarContent: View {
         Text("macDros")
           .font(.headline)
         let count = monitor.devices.filter { $0.state == .online }.count
-        Text(count == 0 ? "no devices" : "\(count) device\(count == 1 ? "" : "s") online")
-          .font(.caption2.monospaced())
-          .foregroundStyle(.secondary)
+        if count == 0 {
+          Text("no devices")
+            .font(.caption2.monospaced())
+            .foregroundStyle(.secondary)
+        } else {
+          Text(LocalizedStringKey("\(count) device\(count == 1 ? "" : "s") online"))
+            .font(.caption2.monospaced())
+            .foregroundStyle(.secondary)
+        }
       }
     }
   }
@@ -96,6 +102,8 @@ struct MenuBarContent: View {
 
 private struct MenuDeviceRow: View {
   let device: Device
+  @State private var showMenu = false
+  @State private var hoverTask: Task<Void, Never>?
 
   var body: some View {
     HStack(spacing: 8) {
@@ -109,23 +117,66 @@ private struct MenuDeviceRow: View {
           .foregroundStyle(.secondary)
       }
       Spacer()
-      Menu {
-        Button("Mirror") {
-          Task { await SessionCoordinator.shared.startMirror(for: device) }
-        }
-        Button("Files") {
-          SessionCoordinator.shared.openFiles(for: device)
-        }
-        if device.supportsFreeform {
-          Button("Desktop") {
-            Task { await SessionCoordinator.shared.openDesktop(for: device) }
-          }
-        }
+      Button {
+        showMenu.toggle()
       } label: {
         Image(systemName: "ellipsis.circle")
       }
-      .menuStyle(.borderlessButton)
+      .buttonStyle(.plain)
       .fixedSize()
+      .onHover { hovering in
+        hoverTask?.cancel()
+        if hovering {
+          hoverTask = Task {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            if !Task.isCancelled { await MainActor.run { showMenu = true } }
+          }
+        } else {
+          hoverTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            if !Task.isCancelled { await MainActor.run { showMenu = false } }
+          }
+        }
+      }
+      .popover(isPresented: $showMenu, arrowEdge: .trailing) {
+        VStack(alignment: .leading, spacing: 4) {
+          Button {
+            showMenu = false
+            Task { await SessionCoordinator.shared.startMirror(for: device) }
+          } label: {
+            Label("Mirror", systemImage: "rectangle.on.rectangle")
+          }
+          .buttonStyle(.plain)
+
+          Button {
+            showMenu = false
+            SessionCoordinator.shared.openFiles(for: device)
+          } label: {
+            Label("Files", systemImage: "folder")
+          }
+          .buttonStyle(.plain)
+
+          if device.supportsFreeform {
+            Button {
+              showMenu = false
+              Task { await SessionCoordinator.shared.openDesktop(for: device) }
+            } label: {
+              Label("Desktop", systemImage: "display")
+            }
+            .buttonStyle(.plain)
+          }
+        }
+        .padding(10)
+        .onHover { hovering in
+          hoverTask?.cancel()
+          if !hovering {
+            hoverTask = Task {
+              try? await Task.sleep(nanoseconds: 300_000_000)
+              if !Task.isCancelled { await MainActor.run { showMenu = false } }
+            }
+          }
+        }
+      }
     }
     .padding(.horizontal, 8)
     .padding(.vertical, 6)

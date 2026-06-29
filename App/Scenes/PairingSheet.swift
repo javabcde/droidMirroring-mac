@@ -21,13 +21,14 @@ struct PairingSheet: View {
     case pairingCode = "Pairing Code"
     case manualIP = "Manual IP"
     var id: String { rawValue }
+    var localizedTitle: LocalizedStringKey { LocalizedStringKey(rawValue) }
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       header
       Picker("", selection: $mode) {
-        ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
+        ForEach(Mode.allCases) { Text($0.localizedTitle).tag($0) }
       }
       .pickerStyle(.segmented)
       .labelsHidden()
@@ -144,7 +145,7 @@ private struct QRPane: View {
 
   private func autoPair(with endpoint: WirelessEndpoint) {
     working = true
-    status("Found \(endpoint.serviceName) — pairing…", false)
+    status(String(localized: "Found \(endpoint.serviceName) — pairing…"), false)
     Task {
       defer { Task { @MainActor in working = false } }
       do {
@@ -154,7 +155,7 @@ private struct QRPane: View {
         if let live = await browser.connectableDevices.first {
           try await wireless.connect(host: live.host, port: live.port)
         }
-        await MainActor.run { status("Paired — check the sidebar.", false) }
+        await MainActor.run { status(String(localized: "Paired — check the sidebar."), false) }
       } catch let err as ADBWirelessClient.WirelessError {
         await MainActor.run {
           status(humanError(err), true)
@@ -184,14 +185,14 @@ private struct QRPane: View {
 
 private struct Step: View {
   let n: Int
-  let text: String
+  let text: LocalizedStringKey
   var body: some View {
     HStack(alignment: .top, spacing: 8) {
       Text("\(n)")
         .font(.caption.bold())
         .frame(width: 20, height: 20)
         .background(Color.accentColor.opacity(0.15), in: Circle())
-      Text(.init(text))
+      Text(text)
         .font(.callout)
     }
   }
@@ -267,7 +268,7 @@ private struct PairingCodePane: View {
         if let live = await browser.connectableDevices.first {
           try await wireless.connect(host: live.host, port: live.port)
         }
-        await MainActor.run { status("Paired — device should appear in the sidebar.", false) }
+        await MainActor.run { status(String(localized: "Paired — device should appear in the sidebar."), false) }
       } catch let err as ADBWirelessClient.WirelessError {
         await MainActor.run { status(humanError(err), true) }
       } catch {
@@ -317,9 +318,15 @@ private struct ManualIPPane: View {
 
       HStack {
         Spacer()
-        Button(pairCode.isEmpty ? "Connect" : "Pair & Connect") { go() }
-          .disabled(host.isEmpty || Int(port) == nil || working || (!pairCode.isEmpty && pairCode.count != 6))
-          .keyboardShortcut(.defaultAction)
+        if pairCode.isEmpty {
+          Button("Connect") { go() }
+            .disabled(host.isEmpty || Int(port) == nil || working || (!pairCode.isEmpty && pairCode.count != 6))
+            .keyboardShortcut(.defaultAction)
+        } else {
+          Button("Pair & Connect") { go() }
+            .disabled(host.isEmpty || Int(port) == nil || working || (!pairCode.isEmpty && pairCode.count != 6))
+            .keyboardShortcut(.defaultAction)
+        }
       }
       Spacer()
     }
@@ -327,7 +334,7 @@ private struct ManualIPPane: View {
 
   private func go() {
     guard let portNum = Int(port) else {
-      status("Port must be a number.", true); return
+      status(String(localized: "Port must be a number."), true); return
     }
     working = true
     status(nil, false)
@@ -338,16 +345,16 @@ private struct ManualIPPane: View {
       do {
         if needsPair {
           try await wireless.pair(host: host, port: portNum, code: code)
-          await MainActor.run { status("Paired. Connecting…", false) }
+          await MainActor.run { status(String(localized: "Paired. Connecting…"), false) }
           // Wait a beat for the device to publish the connect service / open the port.
           try? await Task.sleep(nanoseconds: 800_000_000)
           // After pair, the connect port is usually different from the pair port.
           // The user can connect via manual IP again with the main IP:port, or we
           // can leave it paired — adb auto-connects on subsequent discoveries.
-          await MainActor.run { status("Paired — enter the main IP:port (different number) to connect.", false) }
+          await MainActor.run { status(String(localized: "Paired — enter the main IP:port (different number) to connect."), false) }
         } else {
           try await wireless.connect(host: host, port: portNum)
-          await MainActor.run { status("Connected.", false) }
+          await MainActor.run { status(String(localized: "Connected."), false) }
         }
       } catch let err as ADBWirelessClient.WirelessError {
         await MainActor.run { status(humanError(err), true) }
@@ -360,13 +367,13 @@ private struct ManualIPPane: View {
 
 private func humanError(_ err: ADBWirelessClient.WirelessError) -> String {
   switch err {
-  case .missingMDNS:         return "No wireless ADB service found on this network."
-  case .pairingTimeout:      return "Pairing timed out — keep the pair screen open on the device."
-  case .pairingInvalidCode:  return "Wrong pairing code — try again."
-  case .pairingSwitchFailed: return "Device rejected the pairing."
-  case .connectUnverified:   return "Device is not authorized — accept the prompt on Android."
-  case .addressInvalid(let s): return "Invalid address: \(s)"
-  case .adbMissing:          return "Bundled adb is missing — reinstall DroidMirroring."
-  case .adb(let s):          return s.isEmpty ? "adb returned an unknown error." : s
+  case .missingMDNS:         return String(localized: "No wireless ADB service found on this network.")
+  case .pairingTimeout:      return String(localized: "Pairing timed out — keep the pair screen open on the device.")
+  case .pairingInvalidCode:  return String(localized: "Wrong pairing code — try again.")
+  case .pairingSwitchFailed: return String(localized: "Device rejected the pairing.")
+  case .connectUnverified:   return String(localized: "Device is not authorized — accept the prompt on Android.")
+  case .addressInvalid(let s): return String(localized: "Invalid address: \(s)")
+  case .adbMissing:          return String(localized: "Bundled adb is missing — reinstall DroidMirroring.")
+  case .adb(let s):          return s.isEmpty ? String(localized: "adb returned an unknown error.") : s
   }
 }
