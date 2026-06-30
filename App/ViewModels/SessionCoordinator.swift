@@ -167,11 +167,21 @@ final class SessionCoordinator: ObservableObject {
       startActiveDisplayPolling(for: device)
     } catch {
       // ── Audio fallback ──────────────────────────────────────────────
-      // If the device has no audio HAL (e.g. ZTE F50), the audio socket
-      // never arrives and launch() throws audioUnavailable. Retry once
-      // with audio disabled so the user at least gets video.
-      if case DroidMirroringError.audioUnavailable = error, let c = controller {
-        log.warning("audio unavailable for \(device.id) — retrying without audio")
+      // If the device has no audio HAL (e.g. ZTE F50), scrcpy-server may
+      // either (a) time out on the audio socket → audioUnavailable, or
+      // (b) crash entirely → scrcpyProtocol / short read.  In both cases
+      // retry with audio disabled so the user at least gets video.
+      let isAudioError: Bool = {
+        if case DroidMirroringError.audioUnavailable = error { return true }
+        return false
+      }()
+      let isScrcpyError: Bool = {
+        if case DroidMirroringError.scrcpyProtocol = error { return true }
+        return false
+      }()
+      if (isAudioError || isScrcpyError), let c = controller {
+        let reason = isAudioError ? "audio unavailable" : "scrcpy protocol error"
+        log.warning("\(reason) for \(device.id) — retrying without audio")
         // Clean up the failed server process + reverse forward before retrying.
         await c.session.stop()
         do {
@@ -180,30 +190,31 @@ final class SessionCoordinator: ObservableObject {
           log.notice("mirror started without audio for \(device.id)")
           return
         } catch {
-          // Audio-disabled retry also failed — fall through to alert
+          // Audio-disabled retry also failed — fall through to next handler
           log.error("audio-disabled retry also failed for \(device.id): \(error)")
         }
       }
 
       // If launch failed due to a bad display_id, clear the cache and retry with display 0.
-      // Skip this if the error is audioUnavailable (already retried above).
-      let errDesc = error.localizedDescription
-      let isAudioError: Bool = { if case DroidMirroringError.audioUnavailable = error { return true }; return false }()
-      if !isAudioError, errDesc.contains("display") || errDesc.contains("short read") || errDesc.contains("scrcpy") {
-        log.error("launch failed for \(device.id): \(error). Retrying with displayId=0...")
-        activePanel.removeValue(forKey: device.id)
-        mirrorWindows[device.id]?.close()
-        mirrorWindows.removeValue(forKey: device.id)
-        // Retry
-        do {
-          let controller = try MirrorWindowController(deviceName: device.model.isEmpty ? device.id : device.model)
-          controller.deviceSerial = device.id
-          mirrorWindows[device.id] = controller
-          try await launchSession(for: device, displayId: 0, into: controller)
-          startActiveDisplayPolling(for: device)
-          return
-        } catch {
-          // Second failure — show detailed alert
+      // Skip this if we already retried above (audio / scrcpy error).
+      if !isAudioError && !isScrcpyError {
+        let errDesc = error.localizedDescription
+        if errDesc.contains("display") || errDesc.contains("short read") || errDesc.contains("scrcpy") {
+          log.error("launch failed for \(device.id): \(error). Retrying with displayId=0...")
+          activePanel.removeValue(forKey: device.id)
+          mirrorWindows[device.id]?.close()
+          mirrorWindows.removeValue(forKey: device.id)
+          // Retry
+          do {
+            let controller = try MirrorWindowController(deviceName: device.model.isEmpty ? device.id : device.model)
+            controller.deviceSerial = device.id
+            mirrorWindows[device.id] = controller
+            try await launchSession(for: device, displayId: 0, into: controller)
+            startActiveDisplayPolling(for: device)
+            return
+          } catch {
+            // Second failure — show detailed alert
+          }
         }
       }
 

@@ -2,6 +2,11 @@
 
 All notable changes to DroidMirroring will be documented in this file.
 
+## [v1.4.2] - 2026-06-30
+
+### Fixed
+- **ZTE F50 投屏修复**：v1.4.1 的音频降级只覆盖了 `audioUnavailable`（socket 超时），但实际设备上 scrcpy-server 会直接崩溃产生 `scrcpyProtocol` 错误。v1.4.2 扩大了降级范围：`audioUnavailable` 和 `scrcpyProtocol` 都会自动降级为无音频重试
+
 ## [v1.4.1] - 2026-06-29
 
 ### Fixed
