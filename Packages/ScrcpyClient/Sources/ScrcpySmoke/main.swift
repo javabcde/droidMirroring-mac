@@ -51,7 +51,7 @@ struct ScrcpySmoke {
     print("==> Launching scrcpy-server …")
     let sockets = try await launcher.launch(ScrcpyOptions(
       videoBitRate: 4_000_000,
-      maxFps: 30,
+      maxFps: 60,
       videoCodec: "h264",
       audioEnabled: false,
       controlEnabled: false

@@ -430,12 +430,12 @@ final class SessionCoordinator: ObservableObject {
     let launcher = ScrcpyServerLauncher(adb: adb, serial: device.id, resources: resources)
 
     // Pull video knobs from Settings so the user can dial heat ↔ smoothness.
-    // Defaults match ScrcpyOptions: 4 Mbps / 30 fps / h265 — gentle on the
+    // Defaults match ScrcpyOptions: 4 Mbps / 60 fps / h265 — gentle on the
     // device's hardware encoder, which is the dominant heat source.
     let defaults = UserDefaults.standard
     let codec = (defaults.string(forKey: "mirror.codec") ?? "h265")
     let bitrateMbps = (defaults.object(forKey: "mirror.bitrate") as? Int) ?? 4
-    let maxFps = (defaults.object(forKey: "mirror.maxFps") as? Int) ?? 30
+    let maxFps = (defaults.object(forKey: "mirror.maxFps") as? Int) ?? 60
     let audioOutput = defaults.string(forKey: "mirror.audioOutput") ?? "mac"
 
     let options = ScrcpyOptions(

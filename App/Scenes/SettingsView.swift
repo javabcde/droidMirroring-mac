@@ -38,7 +38,7 @@ private struct GeneralSettings: View {
 private struct MirrorSettings: View {
   @AppStorage("mirror.codec") private var codec = "h265"
   @AppStorage("mirror.bitrate") private var bitrate = 4
-  @AppStorage("mirror.maxFps") private var maxFps = 30
+  @AppStorage("mirror.maxFps") private var maxFps = 60
   @AppStorage("mirror.autoScreenOff") private var autoScreenOff = true
   @AppStorage("mirror.clipboardSync") private var clipboardSync = true
   @AppStorage("mirror.audioOutput") private var audioOutput = "mac"  // "mac" | "phone" | "none"
@@ -53,7 +53,7 @@ private struct MirrorSettings: View {
         }
         Stepper(LocalizedStringKey("Bitrate: \(bitrate) Mbps"), value: $bitrate, in: 1...50)
         Stepper(LocalizedStringKey("Max FPS: \(maxFps)"), value: $maxFps, in: 15...120, step: 5)
-        Text("Lower bitrate / FPS = less heat. For 90/120Hz devices, increase FPS for smoother motion. Defaults (4 Mbps / 30 fps) are tuned for thermals.")
+        Text("Lower bitrate / FPS = less heat. For 90/120Hz devices, increase FPS for smoother motion. Defaults (4 Mbps / 60 fps) are tuned for thermals.")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
