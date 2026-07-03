@@ -5,7 +5,6 @@ import ScrcpyClient
 final class MirrorEventView: NSView, NSTextInputClient {
   var controlSink: ((ControlMessage) -> Void)?
   var deviceDimensions: CGSize = .zero
-  var uhidKeyboard: UHIDKeyboardManager?
 
   private var markedText: NSMutableAttributedString?
   private var isComposingIME = false
@@ -22,7 +21,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
     guard let t, !t.isEmpty else { return }
     if (isComposingIME || markedText != nil || isCJKIMEActive) && t.allSatisfy({ $0.isASCII }) { return }
     markedText = nil; isComposingIME = false
-    t.allSatisfy({ $0.isASCII }) ? { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }() : controlSink?(.setClipboard(text: t, paste: true))
+    t.allSatisfy({ $0.isASCII }) ? controlSink?(.text(t)) : controlSink?(.setClipboard(text: t, paste: true))
   }
   func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) { if let a = string as? NSAttributedString { markedText = NSMutableAttributedString(attributedString: a) } else if let s = string as? String { markedText = NSMutableAttributedString(string: s) }; isComposingIME = true }
   func unmarkText() { markedText = nil; isComposingIME = false }
@@ -76,21 +75,20 @@ final class MirrorEventView: NSView, NSTextInputClient {
     return n.contains("pinyin") || n.contains("wubi") || n.contains("cangjie") || n.contains("bopomofo") || n.contains("japanese") || n.contains("korean") || n.contains("简体") || n.contains("繁体") || n.contains("拼音") || n.contains("五笔") || n.contains("仓颉") || n.contains("注音") || n.contains("微信") || n.contains("搜狗") || n.contains("百度")
   }
   override func keyDown(with e: NSEvent) {
-    if uhidKeyboard?.handleKeyDown(with: e) == true { return }
     if let kc = MirrorKeyMap.androidKeycode(for: e) {
-      if let m = markedText, m.length > 0 { let t = m.string; markedText = nil; isComposingIME = false; for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
-      else { controlSink?(.keycode(kc, action: .down, metaState: MirrorKeyMap.metaState(for: e))) }; return
+      if let m = markedText, m.length > 0 { let t = m.string; markedText = nil; isComposingIME = false; t.allSatisfy({ $0.isASCII }) ? controlSink?(.text(t)) : controlSink?(.setClipboard(text: t, paste: true)) }
+      controlSink?(.keycode(kc, action: .down, metaState: MirrorKeyMap.metaState(for: e))); return
     }
     let hm = isComposingIME; inputContext?.handleEvent(e)
     if !isComposingIME, !hm, let ch = e.characters, !ch.isEmpty, !ch.allSatisfy({ $0.isASCII }) { controlSink?(.setClipboard(text: ch, paste: true)) }
   }
-  override func keyUp(with e: NSEvent) { if uhidKeyboard?.handleKeyUp(with: e) == true { return }; if let kc = MirrorKeyMap.androidKeycode(for: e) { controlSink?(.keycode(kc, action: .up, metaState: MirrorKeyMap.metaState(for: e))) } }
-  override func flagsChanged(with e: NSEvent) { uhidKeyboard?.handleFlagsChanged(with: e) }
+  override func keyUp(with e: NSEvent) { if let kc = MirrorKeyMap.androidKeycode(for: e) { controlSink?(.keycode(kc, action: .up, metaState: MirrorKeyMap.metaState(for: e))) } }
+  override func flagsChanged(with e: NSEvent) {}
   override func doCommand(by sel: Selector) {
-    func commit() { guard let m = markedText, m.length > 0 else { return }; markedText = nil; isComposingIME = false; for ch in m.string { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
-    if sel == #selector(insertTab(_:)) { commit(); uhidKeyboard?.sendKey(0x2B) }
-    else if sel == #selector(insertNewline(_:)) { commit(); uhidKeyboard?.sendKey(0x28) }
-    else if sel == #selector(deleteBackward(_:)) { if let l = markedText?.length, l > 0 { markedText?.deleteCharacters(in: NSRange(location: l-1, length: 1)); if markedText?.length == 0 { markedText = nil; isComposingIME = false } } else { uhidKeyboard?.sendKey(0x2A) } }
+    func commit() { guard let m = markedText, m.length > 0 else { return }; let t = m.string; markedText = nil; isComposingIME = false; t.allSatisfy({ $0.isASCII }) ? controlSink?(.text(t)) : controlSink?(.setClipboard(text: t, paste: true)) }
+    if sel == #selector(insertTab(_:)) { commit(); controlSink?(.keycode(61, action: .down)); controlSink?(.keycode(61, action: .up)) }
+    else if sel == #selector(insertNewline(_:)) { commit(); controlSink?(.keycode(66, action: .down)); controlSink?(.keycode(66, action: .up)) }
+    else if sel == #selector(deleteBackward(_:)) { if markedText != nil, let l = markedText?.length, l > 0 { markedText?.deleteCharacters(in: NSRange(location: l-1, length: 1)); if markedText?.length == 0 { markedText = nil; isComposingIME = false } } else { controlSink?(.keycode(67, action: .down)); controlSink?(.keycode(67, action: .up)) } }
     else if sel == #selector(cancelOperation(_:)) { unmarkText() }
     else if sel == #selector(insertText(_:replacementRange:)) || sel == Selector("paste:") {}
     else { super.doCommand(by: sel) }
