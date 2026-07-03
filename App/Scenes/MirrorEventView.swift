@@ -19,16 +19,8 @@ final class MirrorEventView: NSView, NSTextInputClient {
 
   // MARK: - NSTextInputClient (IME support)
 
-  /// Current IME composition text (marked text). Sent to Android as a single
-  /// `inject_text` when the user confirms the composition (e.g. presses Enter
-  /// or clicks a candidate).
   private var markedText: NSMutableAttributedString?
-
-  /// True while the IME has an active composition (setMarkedText was called
-  /// and not yet followed by unmarkText / insertText).  Prevents forwarding
-  /// raw pinyin / romaji letters to Android during IME input.
   private var isComposingIME = false
-
   private var _currentFrame: NSRect = .zero
 
   func selectedRange() -> NSRange {
@@ -41,13 +33,9 @@ final class MirrorEventView: NSView, NSTextInputClient {
     return NSRange(location: 0, length: text.length)
   }
 
-  func hasMarkedText() -> Bool {
-    markedText?.length ?? 0 > 0
-  }
+  func hasMarkedText() -> Bool { markedText?.length ?? 0 > 0 }
 
-  func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? {
-    nil
-  }
+  func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? { nil }
 
   func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
 
@@ -58,153 +46,70 @@ final class MirrorEventView: NSView, NSTextInputClient {
   func characterIndex(for point: NSPoint) -> Int { 0 }
 
   func insertText(_ string: Any, replacementRange: NSRange) {
-    // Called when the IME composition is committed.
-    // Could be an NSAttributedString or an NSString.
     var textToInsert: String?
-
-    if let attrStr = string as? NSAttributedString {
-      textToInsert = attrStr.string
-    } else if let str = string as? String {
-      textToInsert = str
-    }
-
+    if let attrStr = string as? NSAttributedString { textToInsert = attrStr.string }
+    else if let str = string as? String { textToInsert = str }
     guard let textToInsert, !textToInsert.isEmpty else { return }
-
-    // ─ IME guard ──────────────────────────────────────────────────────────────────
-    // Some IMEs (WeChat, Sogou) call insertText with raw pinyin letters as a
-    // side-effect of handleEvent WITHOUT first calling setMarkedText.
-    // We must swallow those letters.  Check three signals:
-    //   1. isComposingIME  — our flag, set by setMarkedText
-    //   2. markedText      — non-nil means the IME set marked text
-    //   3. isCJKIMEActive  — keyboard input source is a CJK IME
-    let viaFlag   = self.isComposingIME
-    let viaMarked = self.markedText != nil
-    let viaSource = isCJKIMEActive
+    let viaFlag = self.isComposingIME; let viaMarked = self.markedText != nil; let viaSource = isCJKIMEActive
     let isComposing = viaFlag || viaMarked || viaSource
-
-    if isComposing && textToInsert.allSatisfy({ $0.isASCII }) {
-      return   // letters during composition — swallow
-    }
-
-    // Safe to clear IME state now
-    markedText = nil
-    isComposingIME = false
-
-    if textToInsert.allSatisfy({ $0.isASCII }) {
-      // ASCII — direct keycode injection works fine
-      controlSink?(.text(textToInsert))
-    } else {
-      // Non-ASCII (Chinese / Japanese / emoji / …) — inject_text via KeyEvent
-      // is unreliable for CJK on many Android builds.  Use the clipboard path
-      // instead: set device clipboard then paste.
-      controlSink?(.setClipboard(text: textToInsert, paste: true))
-    }
+    if isComposing && textToInsert.allSatisfy({ $0.isASCII }) { return }
+    markedText = nil; isComposingIME = false
+    if textToInsert.allSatisfy({ $0.isASCII }) { controlSink?(.text(textToInsert)) }
+    else { controlSink?(.setClipboard(text: textToInsert, paste: true)) }
   }
 
   func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
-    // Called as the user types in an IME composition session.
-    // `string` is the current composition (partial or final).
-    if let attrStr = string as? NSAttributedString {
-      markedText = NSMutableAttributedString(attributedString: attrStr)
-    } else if let str = string as? String {
-      markedText = NSMutableAttributedString(string: str)
-    }
-    // Mark that the IME is actively composing — prevents forwarding raw
-    // pinyin / romaji letters to Android via interpretKeyEvents side effects.
+    if let attrStr = string as? NSAttributedString { markedText = NSMutableAttributedString(attributedString: attrStr) }
+    else if let str = string as? String { markedText = NSMutableAttributedString(string: str) }
     isComposingIME = true
   }
 
-  func unmarkText() {
-    // Called when the IME composition is cancelled (e.g. user presses Esc)
-    // or after insertText commits the final text.
-    markedText = nil
-    isComposingIME = false
-  }
+  func unmarkText() { markedText = nil; isComposingIME = false }
 
   // MARK: - init / focus / cursor
 
   private var trackingArea: NSTrackingArea?
   private var currentButtons: MotionButton = []
 
-  init(layer hostedLayer: CALayer) {
-    super.init(frame: .zero)
-    wantsLayer = true
-    layer = hostedLayer
-  }
-
+  init(layer hostedLayer: CALayer) { super.init(frame: .zero); wantsLayer = true; layer = hostedLayer }
   required init?(coder: NSCoder) { fatalError() }
-
-  // MARK: focus / cursor
 
   override var acceptsFirstResponder: Bool { true }
   override func becomeFirstResponder() -> Bool { true }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-  /// The window has `isMovableByWindowBackground = true` so users can grab
-  /// the bezel to move it. Without this override, mouseDown on the mirror
-  /// surface would also drag the window — making scroll/swipe gestures inside
-  /// the device impossible. The bezel parent doesn't override this, so window
-  /// drag still works on the black phone-shell area.
   override var mouseDownCanMoveWindow: Bool { false }
 
   override func updateTrackingAreas() {
     super.updateTrackingAreas()
     if let existing = trackingArea { removeTrackingArea(existing) }
-    let area = NSTrackingArea(
-      rect: bounds,
-      options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect],
-      owner: self,
-      userInfo: nil
-    )
-    addTrackingArea(area)
-    trackingArea = area
+    let area = NSTrackingArea(rect: bounds, options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect], owner: self, userInfo: nil)
+    addTrackingArea(area); trackingArea = area
   }
 
-  override func viewDidMoveToWindow() {
-    super.viewDidMoveToWindow()
-    window?.makeFirstResponder(self)
-  }
+  override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); window?.makeFirstResponder(self) }
 
   // MARK: pointer
 
-  override func mouseDown(with event: NSEvent) {
-    currentButtons.insert(.primary)
-    sendTouch(.down, event: event)
-  }
-
-  override func mouseDragged(with event: NSEvent) {
-    sendTouch(.move, event: event)
-  }
-
-  override func mouseUp(with event: NSEvent) {
-    sendTouch(.up, event: event)
-    currentButtons.remove(.primary)
-  }
-
-  override func mouseMoved(with event: NSEvent) {
-    // hover with no buttons — scrcpy treats this as MOVE with empty buttons
-    sendTouch(.hoverMove, event: event)
-  }
-
-  override func rightMouseDown(with event: NSEvent) {
-    // map right-click to BACK keypress, which is what scrcpy desktop client does
-    controlSink?(.backOrScreenOn(action: .down))
-  }
-  override func rightMouseUp(with event: NSEvent) {
-    controlSink?(.backOrScreenOn(action: .up))
-  }
+  override func mouseDown(with event: NSEvent) { currentButtons.insert(.primary); sendTouch(.down, event: event) }
+  override func mouseDragged(with event: NSEvent) { sendTouch(.move, event: event) }
+  override func mouseUp(with event: NSEvent) { sendTouch(.up, event: event); currentButtons.remove(.primary) }
+  override func mouseMoved(with event: NSEvent) { sendTouch(.hoverMove, event: event) }
+  override func rightMouseDown(with event: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
+  override func rightMouseUp(with event: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
   override func scrollWheel(with event: NSEvent) {
     guard let (x, y) = devicePoint(for: event) else { return }
-    // Negate: macOS trackpad → NSEvent.scrollingDeltaY positive → Mac content scrolls up.
-    // Scrcpy server convention: positive vscroll → touch moves DOWN → content scrolls up.
-    // Both produce "content scrolls up", but on scrcpy the touch coordinates are device
-    // pixels, and the server interprets positive vscroll as finger moving down. In practice
-    // this differs from Mac natural scrolling direction, so we negate.
-    // Normalize: scrollingDeltaY can be 10–800 for a trackpad swipe.
-    // Divisor 800 maps a full two-finger swipe to ≈1.0 (one page).
-    let dx = -event.scrollingDeltaX / 800.0
-    let dy = -event.scrollingDeltaY / 800.0
-    guard abs(dx) > 0.005 || abs(dy) > 0.005 else { return }
+    // scrcpy scroll convention: hscroll > 0 = finger moves RIGHT, vscroll > 0 = finger moves UP.
+    // Mac natural scrolling: two-finger LEFT → deltaX negative, two-finger UP → deltaY positive.
+    // X: negate to match (deltaX negative → hscroll positive → finger RIGHT → content RIGHT ✓)
+    // Y: pass through (deltaY positive → vscroll positive → finger UP → content UP ✓)
+    // Divisor 400: one full two-finger trackpad swipe ≈ one full finger swipe on device.
+    // Hold ⌥ (Option) for fast scroll: divisor 80 for ~5x speed (three-finger equivalent).
+    let fast = event.modifierFlags.contains(.option)
+    let divisor = fast ? 80.0 : 400.0
+    let dx = -event.scrollingDeltaX / divisor
+    let dy = event.scrollingDeltaY / divisor
+    guard abs(dx) > 0.003 || abs(dy) > 0.003 else { return }
     controlSink?(.scroll(
       x: x, y: y,
       screenWidth: UInt16(deviceDimensions.width),
@@ -217,36 +122,21 @@ final class MirrorEventView: NSView, NSTextInputClient {
   private func sendTouch(_ action: TouchAction, event: NSEvent) {
     guard let (x, y) = devicePoint(for: event) else { return }
     let buttons: MotionButton = (action == .hoverMove) ? [] : currentButtons
-    controlSink?(.touch(
-      action: action,
-      x: x, y: y,
-      screenWidth: UInt16(deviceDimensions.width),
-      screenHeight: UInt16(deviceDimensions.height),
-      pressure: action == .up ? 0 : 1,
-      buttons: buttons
-    ))
+    controlSink?(.touch(action: action, x: x, y: y, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), pressure: action == .up ? 0 : 1, buttons: buttons))
   }
 
-  /// Translate a NSEvent's view-local point into device pixel coordinates.
-  /// NSView origin is bottom-left; device origin is top-left, so we flip Y.
   private func devicePoint(for event: NSEvent) -> (Int32, Int32)? {
     guard deviceDimensions.width > 0, deviceDimensions.height > 0 else { return nil }
     let p = convert(event.locationInWindow, from: nil)
-    let viewW = bounds.width
-    let viewH = bounds.height
+    let viewW = bounds.width; let viewH = bounds.height
     guard viewW > 0, viewH > 0 else { return nil }
     let devX = Int32((p.x / viewW) * deviceDimensions.width)
     let devY = Int32(((viewH - p.y) / viewH) * deviceDimensions.height)
-    let cx = max(0, min(Int32(deviceDimensions.width) - 1, devX))
-    let cy = max(0, min(Int32(deviceDimensions.height) - 1, devY))
-    return (cx, cy)
+    return (max(0, min(Int32(deviceDimensions.width) - 1, devX)), max(0, min(Int32(deviceDimensions.height) - 1, devY)))
   }
 
   // MARK: keyboard
 
-  /// Returns true when the active keyboard input source is a CJK IME
-  /// (Chinese / Japanese / Korean).  Third-party IMEs (WeChat, Sogou, …)
-  /// sometimes don't call setMarkedText, so we fall back to this check.
   private var isCJKIMEActive: Bool {
     guard let src = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else { return false }
     guard let namePtr = TISGetInputSourceProperty(src, kTISPropertyLocalizedName) else { return false }
@@ -260,30 +150,18 @@ final class MirrorEventView: NSView, NSTextInputClient {
   }
 
   override func keyDown(with event: NSEvent) {
-    // Android KEYCODE_* for special keys (Enter, Tab, Backspace, arrows, etc.)
     if let keycode = MirrorKeyMap.androidKeycode(for: event) {
       if let marked = markedText, marked.length > 0 {
-        let text = marked.string
-        markedText = nil
-        isComposingIME = false
-        if text.allSatisfy({ $0.isASCII }) {
-          controlSink?(.text(text))
-        } else {
-          controlSink?(.setClipboard(text: text, paste: true))
-        }
+        let text = marked.string; markedText = nil; isComposingIME = false
+        if text.allSatisfy({ $0.isASCII }) { controlSink?(.text(text)) }
+        else { controlSink?(.setClipboard(text: text, paste: true)) }
       }
       controlSink?(.keycode(keycode, action: .down, metaState: MirrorKeyMap.metaState(for: event)))
       return
     }
-    // Route through the text input pipeline.
-    // handleEvent is the lower-level entry point that properly engages the IME.
-    let hadMarkedText = isComposingIME
-    let cjkActive = isCJKIMEActive
+    let hadMarkedText = isComposingIME; let cjkActive = isCJKIMEActive
     inputContext?.handleEvent(event)
-    // Fallback: if the IME didn't engage but the event carries non-ASCII
-    // characters (direct IME output), send via clipboard.
-    if !isComposingIME, !hadMarkedText,
-       let chars = event.characters, !chars.isEmpty, !chars.allSatisfy({ $0.isASCII }) {
+    if !isComposingIME, !hadMarkedText, let chars = event.characters, !chars.isEmpty, !chars.allSatisfy({ $0.isASCII }) {
       controlSink?(.setClipboard(text: chars, paste: true))
     }
   }
@@ -294,51 +172,23 @@ final class MirrorEventView: NSView, NSTextInputClient {
     }
   }
 
-  override func flagsChanged(with event: NSEvent) {
-    // Modifier-only changes are reported through flagsChanged. Skip for now.
-  }
+  override func flagsChanged(with event: NSEvent) {}
 
-  // Forward doCommand(by:) from NSResponder so key equivalents work
   override func doCommand(by selector: Selector) {
-    // Helper: commit pending marked text to Android (clipboard for CJK).
     func commitMarkedText() {
       guard let marked = markedText, marked.length > 0 else { return }
-      let text = marked.string
-      markedText = nil
-      isComposingIME = false
-      if text.allSatisfy({ $0.isASCII }) {
-        controlSink?(.text(text))
-      } else {
-        controlSink?(.setClipboard(text: text, paste: true))
-      }
+      let text = marked.string; markedText = nil; isComposingIME = false
+      if text.allSatisfy({ $0.isASCII }) { controlSink?(.text(text)) }
+      else { controlSink?(.setClipboard(text: text, paste: true)) }
     }
-
-    if selector == #selector(insertTab(_:)) {
-      commitMarkedText()
-      controlSink?(.keycode(61, action: .down))  // KEYCODE_TAB
-      controlSink?(.keycode(61, action: .up))
-    } else if selector == #selector(insertNewline(_:)) {
-      commitMarkedText()
-      controlSink?(.keycode(66, action: .down))  // KEYCODE_ENTER
-      controlSink?(.keycode(66, action: .up))
-    } else if selector == #selector(deleteBackward(_:)) {
-      if markedText != nil, let len = markedText?.length, len > 0 {
-        // Remove last character from marked text instead of sending to Android
-        markedText?.deleteCharacters(in: NSRange(location: len - 1, length: 1))
-        if markedText?.length == 0 {
-          markedText = nil
-          isComposingIME = false
-        }
-      } else {
-        controlSink?(.keycode(67, action: .down))  // KEYCODE_DEL
-        controlSink?(.keycode(67, action: .up))
-      }
-    } else if selector == #selector(cancelOperation(_:)) {
-      unmarkText()
-    } else if selector == #selector(insertText(_:replacementRange:)) || selector == Selector("paste:") {
-      // Let macOS paste handle it — don't forward to Android
-    } else {
-      super.doCommand(by: selector)
+    if selector == #selector(insertTab(_:)) { commitMarkedText(); controlSink?(.keycode(61, action: .down)); controlSink?(.keycode(61, action: .up)) }
+    else if selector == #selector(insertNewline(_:)) { commitMarkedText(); controlSink?(.keycode(66, action: .down)); controlSink?(.keycode(66, action: .up)) }
+    else if selector == #selector(deleteBackward(_:)) {
+      if markedText != nil, let len = markedText?.length, len > 0 { markedText?.deleteCharacters(in: NSRange(location: len - 1, length: 1)); if markedText?.length == 0 { markedText = nil; isComposingIME = false } }
+      else { controlSink?(.keycode(67, action: .down)); controlSink?(.keycode(67, action: .up)) }
     }
+    else if selector == #selector(cancelOperation(_:)) { unmarkText() }
+    else if selector == #selector(insertText(_:replacementRange:)) || selector == Selector("paste:") {}
+    else { super.doCommand(by: selector) }
   }
 }
