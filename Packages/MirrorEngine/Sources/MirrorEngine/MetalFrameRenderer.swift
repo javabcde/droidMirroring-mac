@@ -30,8 +30,8 @@ public final class MetalFrameRenderer: @unchecked Sendable {
     layer.pixelFormat = .bgra8Unorm
     layer.framebufferOnly = true
     layer.isOpaque = true
-    layer.drawsAsynchronously = true             // decouple from display link — essential for video playback
-    layer.allowsNextDrawableTimeout = false      // return nil immediately when minimized, don't block
+    layer.drawsAsynchronously = true
+    layer.allowsNextDrawableTimeout = false
     self.layer = layer
 
     CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
@@ -44,7 +44,8 @@ public final class MetalFrameRenderer: @unchecked Sendable {
     pipeline = try device.makeRenderPipelineState(descriptor: desc)
 
     let samplerDesc = MTLSamplerDescriptor()
-    samplerDesc.minFilter = .linear; samplerDesc.magFilter = .linear
+    samplerDesc.minFilter = .linear
+    samplerDesc.magFilter = .linear
     guard let s = device.makeSamplerState(descriptor: samplerDesc) else { throw DroidMirroringError.decoder("no Metal sampler") }
     sampler = s
   }
@@ -52,7 +53,8 @@ public final class MetalFrameRenderer: @unchecked Sendable {
   public func render(pixelBuffer: CVPixelBuffer) {
     guard let cache = textureCache else { return }
     lastPixelBuffer = pixelBuffer
-    let width = CVPixelBufferGetWidth(pixelBuffer); let height = CVPixelBufferGetHeight(pixelBuffer)
+    let width = CVPixelBufferGetWidth(pixelBuffer)
+    let height = CVPixelBufferGetHeight(pixelBuffer)
     let size = CGSize(width: width, height: height)
     if layer.drawableSize != size { layer.drawableSize = size }
     if lastDimensions != size { lastDimensions = size; if let cb = onDimensionsChanged { DispatchQueue.main.async { cb(size) } } }
@@ -63,32 +65,55 @@ public final class MetalFrameRenderer: @unchecked Sendable {
           let cmd = commandQueue.makeCommandBuffer() else { return }
 
     let rpd = MTLRenderPassDescriptor()
-    rpd.colorAttachments[0].texture = drawable.texture; rpd.colorAttachments[0].loadAction = .clear
-    rpd.colorAttachments[0].storeAction = .store; rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+    rpd.colorAttachments[0].texture = drawable.texture
+    rpd.colorAttachments[0].loadAction = .clear
+    rpd.colorAttachments[0].storeAction = .store
+    rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
 
     guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { return }
-    enc.setRenderPipelineState(pipeline); enc.setFragmentTexture(yTex, index: 0); enc.setFragmentTexture(cbcrTex, index: 1)
-    enc.setFragmentSamplerState(sampler, index: 0); enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-    enc.endEncoding(); cmd.present(drawable); cmd.commit()
+    enc.setRenderPipelineState(pipeline)
+    enc.setFragmentTexture(yTex, index: 0)
+    enc.setFragmentTexture(cbcrTex, index: 1)
+    enc.setFragmentSamplerState(sampler, index: 0)
+    enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+    enc.endEncoding()
+    cmd.present(drawable)
+    cmd.commit()
   }
 
   private func makeTexture(cache: CVMetalTextureCache, pixelBuffer: CVPixelBuffer, plane: Int, format: MTLPixelFormat) -> MTLTexture? {
-    let w = CVPixelBufferGetWidthOfPlane(pixelBuffer, plane); let h = CVPixelBufferGetHeightOfPlane(pixelBuffer, plane)
-    var ref: CVMetalTexture?; guard CVMetalTextureCacheCreateTextureFromImage(nil, cache, pixelBuffer, nil, format, w, h, plane, &ref) == kCVReturnSuccess, let ref else { return nil }
+    let w = CVPixelBufferGetWidthOfPlane(pixelBuffer, plane)
+    let h = CVPixelBufferGetHeightOfPlane(pixelBuffer, plane)
+    var ref: CVMetalTexture?
+    guard CVMetalTextureCacheCreateTextureFromImage(nil, cache, pixelBuffer, nil, format, w, h, plane, &ref) == kCVReturnSuccess, let ref else { return nil }
     return CVMetalTextureGetTexture(ref)
   }
 
   private static let shaderSource = """
-  #include <metal_stdlib>; using namespace metal;
+  #include <metal_stdlib>
+  using namespace metal;
+
   struct VOut { float4 pos [[position]]; float2 uv; };
+
   vertex VOut vs_fullscreen(uint vid [[vertex_id]]) {
     float2 pts[3] = { float2(-1, -1), float2(3, -1), float2(-1, 3) };
     float2 uvs[3] = { float2(0, 1),   float2(2, 1),  float2(0, -1) };
-    VOut o; o.pos = float4(pts[vid], 0, 1); o.uv = uvs[vid]; return o;
+    VOut o;
+    o.pos = float4(pts[vid], 0, 1);
+    o.uv = uvs[vid];
+    return o;
   }
-  fragment float4 fs_nv12_bt709(VOut in [[stage_in]], texture2d<float> yTex [[texture(0)]], texture2d<float> cbcrTex[[texture(1)]], sampler samp [[sampler(0)]]) {
-    float y = yTex.sample(samp, in.uv).r; float2 c = cbcrTex.sample(samp, in.uv).rg - float2(0.5, 0.5);
-    return float4(y + 1.5748 * c.y, y - 0.1873 * c.x - 0.4681 * c.y, y + 1.8556 * c.x, 1.0);
+
+  fragment float4 fs_nv12_bt709(VOut in [[stage_in]],
+                                texture2d<float> yTex   [[texture(0)]],
+                                texture2d<float> cbcrTex[[texture(1)]],
+                                sampler samp [[sampler(0)]]) {
+    float y  = yTex.sample(samp, in.uv).r;
+    float2 c = cbcrTex.sample(samp, in.uv).rg - float2(0.5, 0.5);
+    float r = y + 1.5748 * c.y;
+    float g = y - 0.1873 * c.x - 0.4681 * c.y;
+    float b = y + 1.8556 * c.x;
+    return float4(r, g, b, 1.0);
   }
   """
 }
