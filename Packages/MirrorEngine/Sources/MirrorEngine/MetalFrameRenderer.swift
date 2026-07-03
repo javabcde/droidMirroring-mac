@@ -30,8 +30,10 @@ public final class MetalFrameRenderer: @unchecked Sendable {
     layer.pixelFormat = .bgra8Unorm
     layer.framebufferOnly = true
     layer.isOpaque = true
-    layer.drawsAsynchronously = true
-    layer.allowsNextDrawableTimeout = false
+    // drawsAsynchronously stays false (default): synchronous drawable delivery ensures
+    // onDimensionsChanged fires reliably → deviceDimensions gets set → touch coordinates work.
+    // allowsNextDrawableTimeout stays true (default): blocks until next vsync, prevents
+    // nil-return loops that drop every frame when GPU pipeline is busy.
     self.layer = layer
 
     CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
@@ -57,12 +59,20 @@ public final class MetalFrameRenderer: @unchecked Sendable {
     let height = CVPixelBufferGetHeight(pixelBuffer)
     let size = CGSize(width: width, height: height)
     if layer.drawableSize != size { layer.drawableSize = size }
-    if lastDimensions != size { lastDimensions = size; if let cb = onDimensionsChanged { DispatchQueue.main.async { cb(size) } } }
-    if let onFrame { let pts = CMTimeMakeWithSeconds(CACurrentMediaTime(), preferredTimescale: 1_000_000_000); onFrame(pixelBuffer, pts) }
-    guard let yTex = makeTexture(cache: cache, pixelBuffer: pixelBuffer, plane: 0, format: .r8Unorm),
-          let cbcrTex = makeTexture(cache: cache, pixelBuffer: pixelBuffer, plane: 1, format: .rg8Unorm),
-          let drawable = layer.nextDrawable(),
-          let cmd = commandQueue.makeCommandBuffer() else { return }
+    if lastDimensions != size {
+      lastDimensions = size
+      if let cb = onDimensionsChanged { DispatchQueue.main.async { cb(size) } }
+    }
+    if let onFrame {
+      let pts = CMTimeMakeWithSeconds(CACurrentMediaTime(), preferredTimescale: 1_000_000_000)
+      onFrame(pixelBuffer, pts)
+    }
+    guard
+      let yTex = makeTexture(cache: cache, pixelBuffer: pixelBuffer, plane: 0, format: .r8Unorm),
+      let cbcrTex = makeTexture(cache: cache, pixelBuffer: pixelBuffer, plane: 1, format: .rg8Unorm),
+      let drawable = layer.nextDrawable(),
+      let cmd = commandQueue.makeCommandBuffer()
+    else { return }
 
     let rpd = MTLRenderPassDescriptor()
     rpd.colorAttachments[0].texture = drawable.texture
