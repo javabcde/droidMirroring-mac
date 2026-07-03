@@ -68,6 +68,7 @@ final class MirrorWindowController: NSWindowController {
     }
     if !isRestarting, autoScreenOff { try? await writer.send(.setScreenPowerMode(0)); await MainActor.run { self.isScreenOff = true } }; startScreenStatePoller()
     if !isRestarting { await MainActor.run { self.applyAudioOutput(self.audioOutput) } }; isRestarting = false
+    session.paused = false
     // UHID keyboard — create after control channel is fully settled
     try? await Task.sleep(nanoseconds: 300_000_000)
     let km = UHIDKeyboardManager { [weak writer] msg in Task { try? await writer?.send(msg) } }
