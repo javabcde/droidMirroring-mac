@@ -54,9 +54,7 @@ final class MirrorWindowController: NSWindowController {
   }
 
   func bindControl() async {
-    log.notice("bindControl: start")
-    guard let writer = await session.control else { log.error("bindControl: no control writer"); return }
-    log.notice("bindControl: got control writer")
+    guard let writer = await session.control else { return }
     let reader = await session.deviceMessageReader; let initialSize = CGSize(width: Int(await session.dimensions.width), height: Int(await session.dimensions.height))
     let defaults = UserDefaults.standard; let clipboardOn = defaults.object(forKey: "mirror.clipboardSync") as? Bool ?? true; let autoScreenOff = defaults.object(forKey: "mirror.autoScreenOff") as? Bool ?? true
     await MainActor.run {
@@ -64,12 +62,13 @@ final class MirrorWindowController: NSWindowController {
       self.eventView.controlSink = { msg in Task { try? await writer.send(msg) } }
       if let reader { let bridge = ClipboardBridge(writer: writer, reader: reader); bridge.enabled = clipboardOn; bridge.start(); self.clipboardBridge = bridge }
       self.applyDimensions(initialSize); self.window?.toolbar?.validateVisibleItems()
-      log.notice("bindControl: controlSink set, is \(self.eventView.controlSink != nil ? "non-nil" : "NIL")")
     }
-    log.notice("bindControl: screen/audio setup")
     if !isRestarting, autoScreenOff { try? await writer.send(.setScreenPowerMode(0)); await MainActor.run { self.isScreenOff = true } }; startScreenStatePoller()
     if !isRestarting { await MainActor.run { self.applyAudioOutput(self.audioOutput) } }; isRestarting = false
-    log.notice("bindControl: UHID SKIPPED for debug — done")
+    // UHID keyboard — create after control channel is fully settled
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    let km = UHIDKeyboardManager { [weak writer] msg in Task { try? await writer?.send(msg) } }
+    await MainActor.run { self.uhidKeyboard = km; self.eventView.uhidKeyboard = km; km.create() }
   }
 
   @objc private func takeScreenshot() { guard let b = renderer.lastPixelBuffer else { return }; let dir = pictureRoot(); let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-"); do { try Screenshotter.savePNG(pixelBuffer: b, to: dir.appendingPathComponent("Screenshot-\(stamp).png")); NSWorkspace.shared.activateFileViewerSelecting([dir.appendingPathComponent("Screenshot-\(stamp).png")]) } catch { showAlert(error) } }
