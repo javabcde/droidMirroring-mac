@@ -124,16 +124,25 @@ public actor ADBClient {
         model = String(token.dropFirst("model:".count)).replacingOccurrences(of: "_", with: " ")
       } else if token.hasPrefix("usb:") {
         transport = .usb
-      } else if token.contains(":") == false && token.contains(".") {
-        // ip-style serial — e.g. 192.168.1.5:5555
-        transport = .wifi
       }
     }
-    if transport == .unknown && serial.contains(":") {
-      transport = .wifi
-    } else if transport == .unknown {
-      transport = .usb
-    }
+    transport = detectTransport(serial: serial, current: transport)
     return Device(id: serial, model: model, transport: transport, state: state)
+  }
+
+  /// Determine whether a device is connected via USB or Wi-Fi from its serial
+  /// and the parsed host:devices-l tokens.
+  private static func detectTransport(serial: String, current: Device.Transport) -> Device.Transport {
+    if current == .usb { return .usb }
+    // IP-style serial: 192.168.1.100:5555
+    if serial.contains(":") {
+      return .wifi
+    }
+    // Android 11+ wireless debugging serial: adb-XXXX._adb-tls-connect._tcp
+    //   or legacy: adb-XXXX._adb._tcp
+    if serial.contains("._adb") {
+      return .wifi
+    }
+    return .usb
   }
 }
