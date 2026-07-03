@@ -2,9 +2,11 @@ import Foundation
 import AppKit
 import Carbon.HIToolbox
 import ScrcpyClient
+import os
+
+private let log = Logger(subsystem: "com.droidmirroring.app", category: "uhid")
 
 enum HIDKeyboard {
-  /// Minimal USB HID boot keyboard descriptor (45 bytes) — tested with scrcpy v3
   static let descriptor: Data = Data([
     0x05, 0x01, 0x09, 0x06, 0xA1, 0x01,
     0x05, 0x07,
@@ -52,13 +54,33 @@ final class UHIDKeyboardManager {
   private let sink: (ControlMessage) -> Void; private let deviceId: UInt16 = 42
   private var pressedKeys: [UInt8] = []; private var activeModifiers: UInt8 = 0; private var created = false
 
-  init(sink: @escaping (ControlMessage) -> Void) { self.sink = sink }
-  func create() { guard !created else { return }; created = true; sink(ControlMessage.uhidCreate(id: deviceId, descriptor: HIDKeyboard.descriptor)) }
-  func destroy() { sink(ControlMessage.uhidDestroy(id: deviceId)) }
-  func sendKey(_ keycode: UInt8) { var r = Data(count: 8); r[0] = activeModifiers; r[2] = keycode; sink(ControlMessage.uhidInput(id: deviceId, data: r)); r[2] = 0; sink(ControlMessage.uhidInput(id: deviceId, data: r)) }
-  @discardableResult func handleKeyDown(with e: NSEvent) -> Bool { guard let h = HIDKeyboard.hidKeycode(macKeyCode: e.keyCode) else { return false }; if !pressedKeys.contains(h) { pressedKeys.append(h) }; sync(e); flush(); return true }
-  @discardableResult func handleKeyUp(with e: NSEvent) -> Bool { guard let h = HIDKeyboard.hidKeycode(macKeyCode: e.keyCode) else { return false }; pressedKeys.removeAll { $0 == h }; sync(e); flush(); return true }
+  init(sink: @escaping (ControlMessage) -> Void) { self.sink = sink; log.notice("UHIDKeyboard init") }
+
+  func create() {
+    guard !created else { return }; created = true
+    log.notice("UHID create: sending descriptor (\(HIDKeyboard.descriptor.count) bytes)")
+    sink(ControlMessage.uhidCreate(id: deviceId, descriptor: HIDKeyboard.descriptor))
+    log.notice("UHID create: sent")
+  }
+
+  func destroy() { log.notice("UHID destroy"); sink(ControlMessage.uhidDestroy(id: deviceId)) }
+
+  func sendKey(_ keycode: UInt8) {
+    var r = Data(count: 8); r[0] = activeModifiers; r[2] = keycode; sink(ControlMessage.uhidInput(id: deviceId, data: r)); r[2] = 0; sink(ControlMessage.uhidInput(id: deviceId, data: r))
+  }
+
+  @discardableResult func handleKeyDown(with e: NSEvent) -> Bool {
+    guard let h = HIDKeyboard.hidKeycode(macKeyCode: e.keyCode) else { return false }
+    if !pressedKeys.contains(h) { pressedKeys.append(h) }; sync(e); flush(); return true
+  }
+
+  @discardableResult func handleKeyUp(with e: NSEvent) -> Bool {
+    guard let h = HIDKeyboard.hidKeycode(macKeyCode: e.keyCode) else { return false }
+    pressedKeys.removeAll { $0 == h }; sync(e); flush(); return true
+  }
+
   func handleFlagsChanged(with e: NSEvent) { sync(e); flush() }
+
   private func sync(_ e: NSEvent) { var m: UInt8 = 0; let f = e.modifierFlags; if f.contains(.control) { m |= 0x01 }; if f.contains(.shift) { m |= 0x02 }; if f.contains(.option) { m |= 0x04 }; if f.contains(.command) { m |= 0x08 }; activeModifiers = m }
   private func flush() { sink(ControlMessage.uhidInput(id: deviceId, data: HIDKeyboard.makeReport(modifiers: activeModifiers, keycodes: pressedKeys))) }
 }
