@@ -23,7 +23,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
     if (isComposingIME || markedText != nil || isCJKIMEActive) && t.allSatisfy({ $0.isASCII }) { return }
     markedText = nil; isComposingIME = false
     if t.allSatisfy({ $0.isASCII }) { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
-    else { controlSink?(.text(t)) }
+    else { controlSink?(.setClipboard(text: t, paste: true)) }
   }
   func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) { if let a = string as? NSAttributedString { markedText = NSMutableAttributedString(attributedString: a) } else if let s = string as? String { markedText = NSMutableAttributedString(string: s) }; isComposingIME = true }
   func unmarkText() { markedText = nil; isComposingIME = false }
@@ -42,11 +42,9 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func mouseDragged(with e: NSEvent) { dragMoved = true; sendTouch(.move, event: e) }
   override func mouseUp(with e: NSEvent) {
     if dragMoved, let start = dragStartDevice, let cur = devicePoint(for: e) {
-      // Fling: project touch 3x further for lock screen / recents gestures
-      let dy = (cur.1 - start.1) * 3
-      let dx = (cur.0 - start.0) * 3
+      let dy = (cur.1 - start.1) * 3; let dx = (cur.0 - start.0) * 3
       let moved = abs(cur.1 - start.1) + abs(cur.0 - start.0)
-      if moved > 8 && (cur.1 + dy != cur.1 || cur.0 + dx != cur.0) {
+      if moved > 8 && (dy != 0 || dx != 0) {
         let h = Int32(deviceDimensions.height); let w = Int32(deviceDimensions.width)
         sendTouchAt(.move, x: max(0, min(w - 1, cur.0 + dx)), y: max(0, min(h - 1, cur.1 + dy)))
       }
@@ -92,12 +90,12 @@ final class MirrorEventView: NSView, NSTextInputClient {
       else { controlSink?(.keycode(kc, action: .down, metaState: MirrorKeyMap.metaState(for: e))) }; return
     }
     let hm = isComposingIME; inputContext?.handleEvent(e)
-    if !isComposingIME, !hm, let ch = e.characters, !ch.isEmpty, !ch.allSatisfy({ $0.isASCII }) { controlSink?(.text(ch)) }
+    if !isComposingIME, !hm, let ch = e.characters, !ch.isEmpty, !ch.allSatisfy({ $0.isASCII }) { controlSink?(.setClipboard(text: ch, paste: true)) }
   }
   override func keyUp(with e: NSEvent) { if uhidKeyboard?.handleKeyUp(with: e) == true { return }; if let kc = MirrorKeyMap.androidKeycode(for: e) { controlSink?(.keycode(kc, action: .up, metaState: MirrorKeyMap.metaState(for: e))) } }
   override func flagsChanged(with e: NSEvent) { uhidKeyboard?.handleFlagsChanged(with: e) }
   override func doCommand(by sel: Selector) {
-    func commit() { guard let m = markedText, m.length > 0 else { return }; let t = m.string; markedText = nil; isComposingIME = false; if t.allSatisfy({ $0.isASCII }) { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } } else { controlSink?(.text(t)) } }
+    func commit() { guard let m = markedText, m.length > 0 else { return }; let t = m.string; markedText = nil; isComposingIME = false; if t.allSatisfy({ $0.isASCII }) { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } } else { controlSink?(.setClipboard(text: t, paste: true)) } }
     if sel == #selector(insertTab(_:)) { commit(); uhidKeyboard?.sendKey(0x2B) }
     else if sel == #selector(insertNewline(_:)) { commit(); uhidKeyboard?.sendKey(0x28) }
     else if sel == #selector(deleteBackward(_:)) { if let l = markedText?.length, l > 0 { markedText?.deleteCharacters(in: NSRange(location: l-1, length: 1)); if markedText?.length == 0 { markedText = nil; isComposingIME = false } } else { uhidKeyboard?.sendKey(0x2A) } }
