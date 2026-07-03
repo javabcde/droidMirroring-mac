@@ -34,24 +34,17 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func updateTrackingAreas() { super.updateTrackingAreas(); if let e = trackingArea { removeTrackingArea(e) }; let a = NSTrackingArea(rect: bounds, options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect], owner: self, userInfo: nil); addTrackingArea(a); trackingArea = a }
   override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); window?.makeFirstResponder(self) }
 
-  // MARK: pointer
   private var dragStartDevice: (Int32, Int32)?; private var dragMoved = false
   override func mouseDown(with e: NSEvent) { currentButtons.insert(.primary); dragMoved = false; if let pt = devicePoint(for: e) { dragStartDevice = pt }; sendTouch(.down, event: e) }
   override func mouseDragged(with e: NSEvent) { dragMoved = true; sendTouch(.move, event: e) }
   override func mouseUp(with e: NSEvent) {
-    if dragMoved, let start = dragStartDevice, let cur = devicePoint(for: e) {
-      let h = Int32(deviceDimensions.height); let dy = (cur.1 - start.1) * 2
-      if start.1 > h * 2 / 3 && cur.1 < start.1 && abs(cur.1 - start.1) > 8 {
-        sendTouchAt(.move, x: max(0, min(Int32(deviceDimensions.width) - 1, cur.0)), y: max(0, min(h - 1, cur.1 + dy)))
-      }
-    }
+    if dragMoved, let start = dragStartDevice, let cur = devicePoint(for: e) { let h = Int32(deviceDimensions.height); let dy = (cur.1 - start.1) * 2; if start.1 > h * 2 / 3 && cur.1 < start.1 && abs(cur.1 - start.1) > 8 { sendTouchAt(.move, x: max(0, min(Int32(deviceDimensions.width) - 1, cur.0)), y: max(0, min(h - 1, cur.1 + dy))) } }
     sendTouch(.up, event: e); currentButtons.remove(.primary); dragStartDevice = nil; dragMoved = false
   }
   override func mouseMoved(with e: NSEvent) { sendTouch(.hoverMove, event: e) }
   override func rightMouseDown(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
-  // MARK: scroll
   private var accDX: Double = 0; private var accDY: Double = 0; private var scrollOrigin: (Int32, Int32)?
   override func scrollWheel(with event: NSEvent) {
     if !event.momentumPhase.isEmpty && event.momentumPhase != .began { return }
@@ -74,7 +67,6 @@ final class MirrorEventView: NSView, NSTextInputClient {
     return (max(0, min(Int32(deviceDimensions.width) - 1, Int32((p.x / vw) * deviceDimensions.width))), max(0, min(Int32(deviceDimensions.height) - 1, Int32(((vh - p.y) / vh) * deviceDimensions.height))))
   }
 
-  // MARK: keyboard
   private var isCJKIMEActive: Bool {
     guard let src = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else { return false }
     guard let p = TISGetInputSourceProperty(src, kTISPropertyLocalizedName) else { return false }
@@ -98,8 +90,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
     else if sel == #selector(insertNewline(_:)) { commit(); uhidKeyboard?.sendKey(0x28) }
     else if sel == #selector(deleteBackward(_:)) { if let l = markedText?.length, l > 0 { markedText?.deleteCharacters(in: NSRange(location: l-1, length: 1)); if markedText?.length == 0 { markedText = nil; isComposingIME = false } } else { uhidKeyboard?.sendKey(0x2A) } }
     else if sel == #selector(cancelOperation(_:)) { unmarkText() }
-    else if sel == #selector(NSResponder.insertText(_:replacementRange:)) || sel == #selector(NSResponder.paste(_:)) {}
-    else if sel == #selector(NSText.paste(_:)) {}
+    else if sel == #selector(insertText(_:replacementRange:)) || sel == Selector("paste:") {}
     else { super.doCommand(by: sel) }
   }
 }
