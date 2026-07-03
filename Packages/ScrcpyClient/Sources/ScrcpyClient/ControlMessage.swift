@@ -42,7 +42,9 @@ public extension ControlMessage {
     p.append(descriptor)
     return ControlMessage(type: .uhidCreate, payload: p)
   }
-  static func uhidInput(id: UInt16, data: Data) -> ControlMessage { var p = Data(); p.appendBE(UInt16: id); p.append(data); return ControlMessage(type: .uhidInput, payload: p) }
+  /// scrcpy wire format: [id:2][size:2][data:size] — size field prevents TCP
+  /// buffer merge from corrupting multi-message reads on the server side
+  static func uhidInput(id: UInt16, data: Data) -> ControlMessage { var p = Data(); p.appendBE(UInt16: id); p.appendBE(UInt16: UInt16(data.count)); p.append(data); return ControlMessage(type: .uhidInput, payload: p) }
   /// UHID device cleaned up when control socket closes — no explicit destroy message in scrcpy protocol
   static func uhidDestroy(id: UInt16) -> ControlMessage { ControlMessage(type: .uhidCreate, payload: Data()) }
 }
