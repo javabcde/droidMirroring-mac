@@ -22,6 +22,8 @@ final class MirrorWindowController: NSWindowController {
   private var isRecording = false
   private var isClipboardSyncing = true     // default ON, AndroMeld-style
   private var isScreenOff = false
+  /// When true, the phone display stays lit and auto-screen-off is suppressed.
+  private var isStayOn = false
   /// "mac" | "phone" | "none" — persisted in UserDefaults
   private var audioOutput: String {
     get { UserDefaults.standard.string(forKey: "mirror.audioOutput") ?? "mac" }
@@ -449,6 +451,43 @@ final class MirrorWindowController: NSWindowController {
     }
   }
 
+  /// Toggle "Stay On" — keeps the phone display lit and suppresses auto-off.
+  /// Turning it off restores the auto-screen-off preference from Settings.
+  @objc private func toggleStayOn() {
+    isStayOn.toggle()
+    if isStayOn {
+      autoScreenOffEnabled = false
+      isScreenOff = false
+      Task {
+        if let writer = await session.control {
+          try? await writer.send(.setScreenPowerMode(2))  // NORMAL — wake screen
+        }
+      }
+    } else {
+      // Restore the user's auto-screen-off preference.
+      let autoOff = UserDefaults.standard.object(forKey: "mirror.autoScreenOff") as? Bool ?? true
+      autoScreenOffEnabled = autoOff
+      if autoOff {
+        isScreenOff = true
+        Task {
+          if let writer = await session.control {
+            try? await writer.send(.setScreenPowerMode(0))  // OFF
+          }
+        }
+      }
+    }
+    window?.toolbar?.validateVisibleItems()
+  }
+
+  /// Change the max-FPS preset. Persists to UserDefaults and restarts the
+  /// scrcpy session so the new frame rate takes effect on the device.
+  private func changeFps(_ fps: Int) {
+    UserDefaults.standard.set(fps, forKey: "mirror.maxFps")
+    guard let serial = deviceSerial else { return }
+    isRestarting = true
+    Task { await SessionCoordinator.shared.restartMirror(for: serial) }
+  }
+
   // MARK: screen-state poller
 
   /// Poll the phone's real screen state via ADB so `isScreenOff` (and therefore
@@ -537,7 +576,9 @@ final class MirrorWindowController: NSWindowController {
         isClipboardSyncing: isClipboardSyncing,
         isScreenOff: isScreenOff,
         isPinned: isPinned,
-        audioOutput: audioOutput
+        audioOutput: audioOutput,
+        isStayOn: isStayOn,
+        currentFps: (UserDefaults.standard.object(forKey: "mirror.maxFps") as? Int) ?? 60
       ),
       onBack:       { [weak self] in dismiss(); self?.sendBack() },
       onHome:       { [weak self] in dismiss(); self?.sendHome() },
@@ -551,7 +592,9 @@ final class MirrorWindowController: NSWindowController {
       onScreenOff:  { [weak self] in dismiss(); self?.toggleScreenOff() },
       onWake:       { [weak self] in dismiss(); self?.wakeDevice() },
       onPin:        { [weak self] in dismiss(); self?.togglePin() },
-      onCycleAudio: { [weak self] in dismiss(); self?.cycleAudioOutput() }
+      onCycleAudio: { [weak self] in dismiss(); self?.cycleAudioOutput() },
+      onStayOn:     { [weak self] in dismiss(); self?.toggleStayOn() },
+      onFpsChange:  { [weak self] fps in dismiss(); self?.changeFps(fps) }
     )
     let hosting = NSHostingController(rootView: panel)
     popover.contentViewController = hosting
@@ -724,6 +767,8 @@ struct MoreActionsPanel: View {
     var isScreenOff: Bool
     var isPinned: Bool
     var audioOutput: String  // "mac" | "phone" | "none"
+    var isStayOn: Bool
+    var currentFps: Int
   }
 
   let state: State
@@ -740,6 +785,8 @@ struct MoreActionsPanel: View {
   let onWake: () -> Void
   let onPin: () -> Void
   let onCycleAudio: () -> Void
+  let onStayOn: () -> Void
+  let onFpsChange: (Int) -> Void
 
   var audioLabel: String {
     switch state.audioOutput {
@@ -786,6 +833,18 @@ struct MoreActionsPanel: View {
            tint: state.isPinned ? .accentColor : nil,
            action: onPin)
 
+      Tile(symbol: state.isStayOn ? "sun.max.fill" : "sun.max",
+           label: state.isStayOn ? String(localized: "Stay On") : String(localized: "Auto Off"),
+           tint: state.isStayOn ? .orange : nil,
+           action: onStayOn)
+      ForEach([30, 60, 90, 120], id: \.self) { fps in
+        Tile(symbol: "",
+             label: "FPS",
+             tint: state.currentFps == fps ? .accentColor : nil,
+             action: { onFpsChange(fps) },
+             text: "\(fps)")
+      }
+
       Tile(symbol: "power", label: String(localized: "Power"), action: onWake)
     }
     .padding(12)
@@ -798,20 +857,29 @@ private struct Tile: View {
   let label: String
   var tint: Color? = nil
   let action: () -> Void
+  /// When non-nil, render `text` instead of an SF Symbol image (e.g. FPS numbers).
+  var text: String? = nil
 
   @State private var hovering = false
 
   var body: some View {
     Button(action: action) {
       VStack(spacing: 4) {
-        Image(systemName: symbol)
-          .font(.system(size: 18, weight: .medium))
-          .foregroundStyle(tint ?? .primary)
-          .frame(width: 44, height: 44)
-          .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-              .fill(hovering ? Color.primary.opacity(0.18) : Color.primary.opacity(0.08))
-          )
+        Group {
+          if let text {
+            Text(text)
+              .font(.system(size: 16, weight: .semibold, design: .rounded))
+          } else {
+            Image(systemName: symbol)
+              .font(.system(size: 18, weight: .medium))
+          }
+        }
+        .foregroundStyle(tint ?? .primary)
+        .frame(width: 44, height: 44)
+        .background(
+          RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(hovering ? Color.primary.opacity(0.18) : Color.primary.opacity(0.08))
+        )
         Text(label)
           .font(.system(size: 10))
           .foregroundStyle(.secondary)
