@@ -7,7 +7,6 @@ final class MirrorEventView: NSView, NSTextInputClient {
   var deviceDimensions: CGSize = .zero
   var uhidKeyboard: UHIDKeyboardManager?
 
-  // MARK: IME
   private var markedText: NSMutableAttributedString?; private var isComposingIME = false; private var _currentFrame: NSRect = .zero
   func selectedRange() -> NSRange { markedText.map { NSRange(location: $0.length, length: 0) } ?? NSRange() }
   func markedRange() -> NSRange { markedText?.length ?? 0 > 0 ? NSRange(location: 0, length: markedText!.length) : NSRange() }
@@ -16,7 +15,6 @@ final class MirrorEventView: NSView, NSTextInputClient {
   func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
   func firstRect(forCharacterRange r: NSRange, actualRange: NSRangePointer?) -> NSRect { window?.convertToScreen(convert(_currentFrame, to: nil)) ?? .zero }
   func characterIndex(for p: NSPoint) -> Int { 0 }
-
   func insertText(_ string: Any, replacementRange: NSRange) {
     var t: String?; if let a = string as? NSAttributedString { t = a.string } else if let s = string as? String { t = s }
     guard let t, !t.isEmpty else { return }
@@ -28,78 +26,71 @@ final class MirrorEventView: NSView, NSTextInputClient {
   func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) { if let a = string as? NSAttributedString { markedText = NSMutableAttributedString(attributedString: a) } else if let s = string as? String { markedText = NSMutableAttributedString(string: s) }; isComposingIME = true }
   func unmarkText() { markedText = nil; isComposingIME = false }
 
-  // MARK: init
   private var trackingArea: NSTrackingArea?; private var currentButtons: MotionButton = []
   init(layer hostedLayer: CALayer) { super.init(frame: .zero); wantsLayer = true; layer = hostedLayer }
   required init?(coder: NSCoder) { fatalError() }
-  override var acceptsFirstResponder: Bool { true }
-  override func becomeFirstResponder() -> Bool { true }
+  override var acceptsFirstResponder: Bool { true }; override func becomeFirstResponder() -> Bool { true }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
   override func updateTrackingAreas() { super.updateTrackingAreas(); if let e = trackingArea { removeTrackingArea(e) }; let a = NSTrackingArea(rect: bounds, options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect], owner: self, userInfo: nil); addTrackingArea(a); trackingArea = a }
   override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); window?.makeFirstResponder(self) }
 
-  // MARK: pointer — with swipe fling for lock screen gestures
-  private var dragStartDevice: (Int32, Int32)?
-  private var dragLastDevice: (Int32, Int32)?
+  // MARK: pointer
+  private var dragStartDevice: (Int32, Int32)?; private var dragMoved = false
 
   override func mouseDown(with e: NSEvent) {
-    currentButtons.insert(.primary)
-    if let pt = devicePoint(for: e) { dragStartDevice = pt; dragLastDevice = pt }
+    currentButtons.insert(.primary); dragMoved = false
+    if let pt = devicePoint(for: e) { dragStartDevice = pt }
     sendTouch(.down, event: e)
   }
-
-  override func mouseDragged(with e: NSEvent) {
-    if let pt = devicePoint(for: e) { dragLastDevice = pt }
-    sendTouch(.move, event: e)
-  }
-
+  override func mouseDragged(with e: NSEvent) { dragMoved = true; sendTouch(.move, event: e) }
   override func mouseUp(with e: NSEvent) {
-    // Compute swipe distance: if user dragged significantly, "fling" the
-    // touch further in the same direction before releasing. This makes
-    // three-finger lock-screen swipes reach the top half of the screen
-    // even when the trackpad only moves a short distance.
-    if let start = dragStartDevice, let last = dragLastDevice, let cur = devicePoint(for: e) {
-      let dx = Int32((Double(cur.0) - Double(start.0)) * 2.0)
+    // Fling: only for fast upward swipes from bottom third (lock screen unlock pattern).
+    // Normal drags (icons, notification shade) are passed through faithfully.
+    if dragMoved, let start = dragStartDevice, let cur = devicePoint(for: e) {
+      let h = deviceDimensions.height
       let dy = Int32((Double(cur.1) - Double(start.1)) * 2.0)
-      let flingX = max(0, min(Int32(deviceDimensions.width) - 1, cur.0 + dx))
-      let flingY = max(0, min(Int32(deviceDimensions.height) - 1, cur.1 + dy))
-      let dist = abs(cur.0 - start.0) + abs(cur.1 - start.1)
-      if dist > 8 {
-        // Significant drag (not a tap): fling and release at projected point
+      let dyAbs = abs(cur.1 - start.1)
+      let fromBottom = start.1 > h * 2 / 3 && cur.1 < start.1   // started bottom, moving up
+      if fromBottom && dyAbs > 8 {
+        let flingY = max(0, min(h - 1, cur.1 + dy))
+        let flingX = max(0, min(deviceDimensions.width - 1, cur.0))
         sendTouchAt(.move, x: flingX, y: flingY)
       }
     }
     sendTouch(.up, event: e)
-    currentButtons.remove(.primary); dragStartDevice = nil; dragLastDevice = nil
+    currentButtons.remove(.primary); dragStartDevice = nil; dragMoved = false
   }
-
   override func mouseMoved(with e: NSEvent) { sendTouch(.hoverMove, event: e) }
   override func rightMouseDown(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
-  // MARK: scroll
-  private var accDX: Double = 0; private var accDY: Double = 0; private var scrollPos: (Int32, Int32)?
+  // MARK: scroll — accumulate per gesture, skip momentum
+  private var accDX: Double = 0; private var accDY: Double = 0; private var scrollOrigin: (Int32, Int32)?
+
   override func scrollWheel(with event: NSEvent) {
+    // Skip momentum/inertia events — these are post-gesture coasting that
+    // Android already simulates via fling. Including them causes double-scroll.
+    if event.momentumPhase != .none && event.momentumPhase != .began { return }
     guard let (x, y) = devicePoint(for: event) else { return }
+    // Record position on first event or .began phase
+    if scrollOrigin == nil || event.phase == .began { scrollOrigin = (x, y) }
     let fast = event.modifierFlags.contains(.option); let d = fast ? 80.0 : 400.0
-    accDX += -event.scrollingDeltaX / d; accDY += event.scrollingDeltaY / d; scrollPos = (x, y)
-    if event.phase == .ended || event.phase == .cancelled || event.momentumPhase == .ended {
-      let (sx, sy) = scrollPos ?? (x, y); let dx = accDX; let dy = accDY; accDX = 0; accDY = 0; scrollPos = nil
+    accDX += -event.scrollingDeltaX / d; accDY += event.scrollingDeltaY / d
+    if event.phase == .ended || event.phase == .cancelled {
+      let origin = scrollOrigin ?? (x, y); let dx = accDX; let dy = accDY
+      accDX = 0; accDY = 0; scrollOrigin = nil
       guard abs(dx) > 0.003 || abs(dy) > 0.003 else { return }
-      controlSink?(.scroll(x: sx, y: sy, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: dx, vscroll: dy, buttons: currentButtons))
+      controlSink?(.scroll(x: origin.0, y: origin.1, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: dx, vscroll: dy, buttons: currentButtons))
     }
   }
 
   private func sendTouch(_ action: TouchAction, event: NSEvent) {
-    guard let (x, y) = devicePoint(for: event) else { return }
-    sendTouchAt(action, x: x, y: y)
+    guard let (x, y) = devicePoint(for: event) else { return }; sendTouchAt(action, x: x, y: y)
   }
-
   private func sendTouchAt(_ action: TouchAction, x: Int32, y: Int32) {
     controlSink?(.touch(action: action, x: x, y: y, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), pressure: action == .up ? 0 : 1, buttons: (action == .hoverMove) ? [] : currentButtons))
   }
-
   private func devicePoint(for event: NSEvent) -> (Int32, Int32)? {
     guard deviceDimensions.width > 0, deviceDimensions.height > 0 else { return nil }
     let p = convert(event.locationInWindow, from: nil); let vw = bounds.width; let vh = bounds.height; guard vw > 0, vh > 0 else { return nil }
