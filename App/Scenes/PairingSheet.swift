@@ -88,9 +88,9 @@ private struct QRPane: View {
       do {
         try await wireless.pair(host: endpoint.host, port: endpoint.port, code: sessionPassword)
         try? await Task.sleep(nanoseconds: 800_000_000)
-        if let live = await browser.connectableDevices.first {
+        if let live = browser.connectableDevices.first {
           try await wireless.connect(host: live.host, port: live.port)
-          await MainActor.run { SessionCoordinator.shared.trustDevice("\(live.host):\(live.port)") }
+          SessionCoordinator.shared.trustDevice("\(live.host):\(live.port)")
         }
         await MainActor.run { status(String(localized: "Paired — check the sidebar."), false) }
       } catch let err as ADBWirelessClient.WirelessError { await MainActor.run { status(humanError(err), true); pairingTriggered = false } }
@@ -132,9 +132,9 @@ private struct PairingCodePane: View {
       do {
         try await wireless.pair(host: endpoint.host, port: endpoint.port, code: code)
         try? await Task.sleep(nanoseconds: 500_000_000)
-        if let live = await browser.connectableDevices.first {
+        if let live = browser.connectableDevices.first {
           try await wireless.connect(host: live.host, port: live.port)
-          await MainActor.run { SessionCoordinator.shared.trustDevice("\(live.host):\(live.port)") }
+          SessionCoordinator.shared.trustDevice("\(live.host):\(live.port)")
         }
         await MainActor.run { status(String(localized: "Paired — device should appear in the sidebar."), false) }
       } catch let err as ADBWirelessClient.WirelessError { await MainActor.run { status(humanError(err), true) } }
