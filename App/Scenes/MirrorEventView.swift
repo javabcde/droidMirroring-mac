@@ -48,36 +48,17 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func rightMouseDown(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
-  private var accDX: Double = 0; private var accDY: Double = 0
-  private var scrollOrigin: (Int32, Int32)?
-  private var isLockScreenScroll = false
-  private var lockScreenTouchSent = false
-
+  private var accDX: Double = 0; private var accDY: Double = 0; private var scrollOrigin: (Int32, Int32)?
   override func scrollWheel(with event: NSEvent) {
     if !event.momentumPhase.isEmpty && event.momentumPhase != .began { return }
     guard let (x, y) = devicePoint(for: event) else { return }
-    if scrollOrigin == nil { scrollOrigin = (x, y); isLockScreenScroll = (y > Int32(deviceDimensions.height * 2 / 3)) }
+    if scrollOrigin == nil || event.phase == .began { scrollOrigin = (x, y) }
     let d = event.modifierFlags.contains(.option) ? 80.0 : 400.0
     accDX += -event.scrollingDeltaX / d; accDY += event.scrollingDeltaY / d
-
-    if isLockScreenScroll {
-      // Lock screen: touch sequence for sustained drag detection
-      if !lockScreenTouchSent { lockScreenTouchSent = true; sendTouchAt(.down, x: x, y: y) }
-      let devDY = Int32(Double(deviceDimensions.height) * -accDY * 0.5)
-      let my = max(0, min(Int32(deviceDimensions.height) - 1, y + devDY))
-      sendTouchAt(.move, x: x, y: my)
-    }
-
     if event.phase == .ended || event.phase == .cancelled {
-      let dx = accDX; let dy = accDY; accDX = 0; accDY = 0; scrollOrigin = nil
-      if isLockScreenScroll && lockScreenTouchSent {
-        Task { try? await Task.sleep(nanoseconds: 80_000_000); await MainActor.run { sendTouchAt(.up, x: x, y: y); lockScreenTouchSent = false } }
-      }
-      isLockScreenScroll = false
-      // Normal scroll: accumulated delta as one atomic command
-      if abs(dx) > 0.003 || abs(dy) > 0.003 {
-        controlSink?(.scroll(x: x, y: y, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: dx, vscroll: dy, buttons: currentButtons))
-      }
+      let o = scrollOrigin ?? (x, y); let dx = accDX; let dy = accDY; accDX = 0; accDY = 0; scrollOrigin = nil
+      guard abs(dx) > 0.003 || abs(dy) > 0.003 else { return }
+      controlSink?(.scroll(x: o.0, y: o.1, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: dx, vscroll: dy, buttons: currentButtons))
     }
   }
 
