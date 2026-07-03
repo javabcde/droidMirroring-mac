@@ -5,6 +5,8 @@ import ScrcpyClient
 final class MirrorEventView: NSView, NSTextInputClient {
   var controlSink: ((ControlMessage) -> Void)?
   var deviceDimensions: CGSize = .zero
+  /// UHID keyboard manager — set by MirrorWindowController after creating session
+  var uhidKeyboard: UHIDKeyboardManager?
 
   // MARK: IME
   private var markedText: NSMutableAttributedString?
@@ -26,7 +28,8 @@ final class MirrorEventView: NSView, NSTextInputClient {
     let c = isComposingIME || markedText != nil || isCJKIMEActive
     if c && t.allSatisfy({ $0.isASCII }) { return }
     markedText = nil; isComposingIME = false
-    t.allSatisfy({ $0.isASCII }) ? controlSink?(.text(t)) : controlSink?(.setClipboard(text: t, paste: true))
+    if t.allSatisfy({ $0.isASCII }) { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
+    else { controlSink?(.setClipboard(text: t, paste: true)) }
   }
 
   func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
@@ -63,24 +66,14 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func rightMouseDown(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
-  // MARK: scroll — accumulate deltas across gesture, send once on gesture end
-  private var accDX: Double = 0
-  private var accDY: Double = 0
-  private var scrollPos: (Int32, Int32)?
-
+  // MARK: scroll
+  private var accDX: Double = 0; private var accDY: Double = 0; private var scrollPos: (Int32, Int32)?
   override func scrollWheel(with event: NSEvent) {
     guard let (x, y) = devicePoint(for: event) else { return }
-    let fast = event.modifierFlags.contains(.option)
-    let d = fast ? 80.0 : 400.0
-    accDX += -event.scrollingDeltaX / d
-    accDY += event.scrollingDeltaY / d
-    scrollPos = (x, y)
-
-    // Only flush on gesture end or momentum end — one scroll cmd per gesture
+    let fast = event.modifierFlags.contains(.option); let d = fast ? 80.0 : 400.0
+    accDX += -event.scrollingDeltaX / d; accDY += event.scrollingDeltaY / d; scrollPos = (x, y)
     if event.phase == .ended || event.phase == .cancelled || event.momentumPhase == .ended {
-      let (sx, sy) = scrollPos ?? (x, y)
-      let dx = accDX; let dy = accDY
-      accDX = 0; accDY = 0; scrollPos = nil
+      let (sx, sy) = scrollPos ?? (x, y); let dx = accDX; let dy = accDY; accDX = 0; accDY = 0; scrollPos = nil
       guard abs(dx) > 0.003 || abs(dy) > 0.003 else { return }
       controlSink?(.scroll(x: sx, y: sy, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: dx, vscroll: dy, buttons: currentButtons))
     }
@@ -93,10 +86,8 @@ final class MirrorEventView: NSView, NSTextInputClient {
 
   private func devicePoint(for event: NSEvent) -> (Int32, Int32)? {
     guard deviceDimensions.width > 0, deviceDimensions.height > 0 else { return nil }
-    let p = convert(event.locationInWindow, from: nil)
-    let vw = bounds.width; let vh = bounds.height; guard vw > 0, vh > 0 else { return nil }
-    return (max(0, min(Int32(deviceDimensions.width) - 1, Int32((p.x / vw) * deviceDimensions.width))),
-            max(0, min(Int32(deviceDimensions.height) - 1, Int32(((vh - p.y) / vh) * deviceDimensions.height))))
+    let p = convert(event.locationInWindow, from: nil); let vw = bounds.width; let vh = bounds.height; guard vw > 0, vh > 0 else { return nil }
+    return (max(0, min(Int32(deviceDimensions.width) - 1, Int32((p.x / vw) * deviceDimensions.width))), max(0, min(Int32(deviceDimensions.height) - 1, Int32(((vh - p.y) / vh) * deviceDimensions.height))))
   }
 
   // MARK: keyboard
@@ -108,25 +99,31 @@ final class MirrorEventView: NSView, NSTextInputClient {
   }
 
   override func keyDown(with e: NSEvent) {
+    // UHID keyboard handles ASCII keys directly
+    if uhidKeyboard?.handleKeyDown(with: e) == true { return }
+    // Fallback to scrcpy keycode for navigation keys
     if let kc = MirrorKeyMap.androidKeycode(for: e) {
-      if let m = markedText, m.length > 0 { let t = m.string; markedText = nil; isComposingIME = false; t.allSatisfy({ $0.isASCII }) ? controlSink?(.text(t)) : controlSink?(.setClipboard(text: t, paste: true)) }
-      controlSink?(.keycode(kc, action: .down, metaState: MirrorKeyMap.metaState(for: e))); return
+      if let m = markedText, m.length > 0 { let t = m.string; markedText = nil; isComposingIME = false; for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
+      else { controlSink?(.keycode(kc, action: .down, metaState: MirrorKeyMap.metaState(for: e))) }
+      return
     }
+    // Route through IME pipeline for CJK input
     let hm = isComposingIME; inputContext?.handleEvent(e)
     if !isComposingIME, !hm, let ch = e.characters, !ch.isEmpty, !ch.allSatisfy({ $0.isASCII }) { controlSink?(.setClipboard(text: ch, paste: true)) }
   }
 
   override func keyUp(with e: NSEvent) {
+    if uhidKeyboard?.handleKeyUp(with: e) == true { return }
     if let kc = MirrorKeyMap.androidKeycode(for: e) { controlSink?(.keycode(kc, action: .up, metaState: MirrorKeyMap.metaState(for: e))) }
   }
 
-  override func flagsChanged(with e: NSEvent) {}
+  override func flagsChanged(with e: NSEvent) { uhidKeyboard?.handleFlagsChanged(with: e) }
 
   override func doCommand(by sel: Selector) {
-    func commit() { guard let m = markedText, m.length > 0 else { return }; let t = m.string; markedText = nil; isComposingIME = false; t.allSatisfy({ $0.isASCII }) ? controlSink?(.text(t)) : controlSink?(.setClipboard(text: t, paste: true)) }
-    if sel == #selector(insertTab(_:)) { commit(); controlSink?(.keycode(61, action: .down)); controlSink?(.keycode(61, action: .up)) }
-    else if sel == #selector(insertNewline(_:)) { commit(); controlSink?(.keycode(66, action: .down)); controlSink?(.keycode(66, action: .up)) }
-    else if sel == #selector(deleteBackward(_:)) { if let m = markedText, let l = markedText?.length, l > 0 { markedText?.deleteCharacters(in: NSRange(location: l-1, length: 1)); if markedText?.length == 0 { markedText = nil; isComposingIME = false } } else { controlSink?(.keycode(67, action: .down)); controlSink?(.keycode(67, action: .up)) } }
+    func commit() { guard let m = markedText, m.length > 0 else { return }; let t = m.string; markedText = nil; isComposingIME = false; for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
+    if sel == #selector(insertTab(_:)) { commit(); uhidKeyboard?.sendKey(0x2B) }
+    else if sel == #selector(insertNewline(_:)) { commit(); uhidKeyboard?.sendKey(0x28) }
+    else if sel == #selector(deleteBackward(_:)) { if let m = markedText, let l = markedText?.length, l > 0 { markedText?.deleteCharacters(in: NSRange(location: l-1, length: 1)); if markedText?.length == 0 { markedText = nil; isComposingIME = false } } else { uhidKeyboard?.sendKey(0x2A) } }
     else if sel == #selector(cancelOperation(_:)) { unmarkText() }
     else if sel == #selector(insertText(_:replacementRange:)) || sel == Selector("paste:") {}
     else { super.doCommand(by: sel) }
