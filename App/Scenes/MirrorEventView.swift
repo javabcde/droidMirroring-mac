@@ -22,7 +22,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
     guard let t, !t.isEmpty else { return }
     if (isComposingIME || markedText != nil || isCJKIMEActive) && t.allSatisfy({ $0.isASCII }) { return }
     markedText = nil; isComposingIME = false
-    if t.allSatisfy({ $0.isASCII }) { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
+    if t.allSatisfy({ $0.isASCII }) { if let u = uhidKeyboard { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { u.sendKey(hk) } } } else { controlSink?(.setClipboard(text: t, paste: true)) } }
     else { controlSink?(.setClipboard(text: t, paste: true)) }
   }
   func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) { if let a = string as? NSAttributedString { markedText = NSMutableAttributedString(attributedString: a) } else if let s = string as? String { markedText = NSMutableAttributedString(string: s) }; isComposingIME = true }
@@ -86,7 +86,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func keyDown(with e: NSEvent) {
     if uhidKeyboard?.handleKeyDown(with: e) == true { return }
     if let kc = MirrorKeyMap.androidKeycode(for: e) {
-      if let m = markedText, m.length > 0 { let t = m.string; markedText = nil; isComposingIME = false; for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
+      if let m = markedText, m.length > 0 { let t = m.string; markedText = nil; isComposingIME = false; if let u = uhidKeyboard { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { u.sendKey(hk) } } } else { controlSink?(.setClipboard(text: t, paste: true)) } }
       else { controlSink?(.keycode(kc, action: .down, metaState: MirrorKeyMap.metaState(for: e))) }; return
     }
     let hm = isComposingIME; inputContext?.handleEvent(e)
@@ -95,10 +95,10 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func keyUp(with e: NSEvent) { if uhidKeyboard?.handleKeyUp(with: e) == true { return }; if let kc = MirrorKeyMap.androidKeycode(for: e) { controlSink?(.keycode(kc, action: .up, metaState: MirrorKeyMap.metaState(for: e))) } }
   override func flagsChanged(with e: NSEvent) { uhidKeyboard?.handleFlagsChanged(with: e) }
   override func doCommand(by sel: Selector) {
-    func commit() { guard let m = markedText, m.length > 0 else { return }; let t = m.string; markedText = nil; isComposingIME = false; if t.allSatisfy({ $0.isASCII }) { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } } else { controlSink?(.setClipboard(text: t, paste: true)) } }
-    if sel == #selector(insertTab(_:)) { commit(); uhidKeyboard?.sendKey(0x2B) }
-    else if sel == #selector(insertNewline(_:)) { commit(); uhidKeyboard?.sendKey(0x28) }
-    else if sel == #selector(deleteBackward(_:)) { if let l = markedText?.length, l > 0 { markedText?.deleteCharacters(in: NSRange(location: l-1, length: 1)); if markedText?.length == 0 { markedText = nil; isComposingIME = false } } else { uhidKeyboard?.sendKey(0x2A) } }
+    func commit() { guard let m = markedText, m.length > 0 else { return }; let t = m.string; markedText = nil; isComposingIME = false; if t.allSatisfy({ $0.isASCII }) { if let u = uhidKeyboard { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { u.sendKey(hk) } } } else { controlSink?(.setClipboard(text: t, paste: true)) } } else { controlSink?(.setClipboard(text: t, paste: true)) } }
+    if sel == #selector(insertTab(_:)) { commit(); if let u = uhidKeyboard { u.sendKey(0x2B) } else { controlSink?(.setClipboard(text: "\t", paste: true)) } }
+    else if sel == #selector(insertNewline(_:)) { commit(); if let u = uhidKeyboard { u.sendKey(0x28) } else { controlSink?(.setClipboard(text: "\n", paste: true)) } }
+    else if sel == #selector(deleteBackward(_:)) { if let l = markedText?.length, l > 0 { markedText?.deleteCharacters(in: NSRange(location: l-1, length: 1)); if markedText?.length == 0 { markedText = nil; isComposingIME = false } } else { if let u = uhidKeyboard { u.sendKey(0x2A) } } }
     else if sel == #selector(cancelOperation(_:)) { unmarkText() }
     else if sel == #selector(insertText(_:replacementRange:)) || sel == Selector("paste:") {}
     else { super.doCommand(by: sel) }

@@ -30,10 +30,6 @@ public final class MetalFrameRenderer: @unchecked Sendable {
     layer.pixelFormat = .bgra8Unorm
     layer.framebufferOnly = true
     layer.isOpaque = true
-    // drawsAsynchronously stays false (default): synchronous drawable delivery ensures
-    // onDimensionsChanged fires reliably → deviceDimensions gets set → touch coordinates work.
-    // allowsNextDrawableTimeout stays true (default): blocks until next vsync, prevents
-    // nil-return loops that drop every frame when GPU pipeline is busy.
     self.layer = layer
 
     CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
