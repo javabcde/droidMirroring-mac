@@ -16,7 +16,6 @@ final class MirrorWindowController: NSWindowController {
   private var clipboardBridge: ClipboardBridge?; private let deviceDisplayName: String
   private let adb = ADBClient(); private var screenStatePoller: Timer?; private var autoScreenOffEnabled = false
   private var savedDeviceVolume: Int?; private var chromeRevealed = false; private var chromeHideTimer: Timer?; private var mouseMonitor: Any?
-  private var uhidKeyboard: UHIDKeyboardManager?
   private static let bezelInset: CGFloat = 8; private static let bezelCornerRadius: CGFloat = 34; private static let innerCornerRadius: CGFloat = 26; private static let chromeStrip: CGFloat = 32
   var deviceSerial: String?; var isRestarting = false
 
@@ -44,7 +43,6 @@ final class MirrorWindowController: NSWindowController {
   required init?(coder: NSCoder) { fatalError() }
 
   override func close() {
-    uhidKeyboard?.destroy(); uhidKeyboard = nil
     screenStatePoller?.invalidate(); screenStatePoller = nil; if let m = mouseMonitor { NSEvent.removeMonitor(m); mouseMonitor = nil }
     chromeHideTimer?.invalidate(); chromeHideTimer = nil; clipboardBridge?.stop(); clipboardBridge = nil
     Task { if recorder.isRecording { await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in recorder.stop { _ in c.resume() } } }; if isScreenOff, let writer = await session.control { try? await writer.send(.setScreenPowerMode(2)) }; if let s = deviceSerial, let v = savedDeviceVolume { try? await adb.shell("media volume --stream 3 --set \(v)", serial: s); savedDeviceVolume = nil }; await session.stop() }; saveWindowFrame(); super.close()
@@ -56,7 +54,6 @@ final class MirrorWindowController: NSWindowController {
     let defaults = UserDefaults.standard; let clipboardOn = defaults.object(forKey: "mirror.clipboardSync") as? Bool ?? true; let autoScreenOff = defaults.object(forKey: "mirror.autoScreenOff") as? Bool ?? true
     await MainActor.run {
       self.isClipboardSyncing = clipboardOn; self.autoScreenOffEnabled = autoScreenOff
-      let km = UHIDKeyboardManager { msg in Task { try? await writer.send(msg) } }; self.uhidKeyboard = km; self.eventView.uhidKeyboard = km; km.create()
       self.eventView.controlSink = { msg in Task { try? await writer.send(msg) } }
       if let reader { let bridge = ClipboardBridge(writer: writer, reader: reader); bridge.enabled = clipboardOn; bridge.start(); self.clipboardBridge = bridge }
       self.applyDimensions(initialSize); self.window?.toolbar?.validateVisibleItems()
@@ -79,9 +76,6 @@ final class MirrorWindowController: NSWindowController {
   private func fetchDeviceVolume(serial: String) async -> Int? { do { let o = try await adb.shell("media volume --stream 3 --get", serial: serial); if let r = o.range(of: #"(\d+)"#, options: .regularExpression) { return Int(o[r].filter(\.isNumber)) } } catch {}; return nil }
   private func setDeviceVolume(serial: String, level: Int) async { try? await adb.shell("media volume --stream 3 --set \(level)", serial: serial) }
   @objc private func toggleScreenOff() { let tf = !isScreenOff; isScreenOff = tf; window?.toolbar?.validateVisibleItems(); Task { if let writer = await session.control { try? await writer.send(.setScreenPowerMode(tf ? 0 : 2)) } } }
-  /// Poll device screen state every 3s. Tracks reality so the Sleep/Wake button
-  /// stays in sync, but does NOT force the screen back off — if the user pressed
-  /// the physical power button to wake the phone, we respect that.
   private func startScreenStatePoller() { screenStatePoller?.invalidate(); screenStatePoller = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in guard let self, let s = self.deviceSerial else { return }; Task.detached { [weak self] in guard let self else { return }; let off = await self.queryDeviceScreenOff(serial: s); await MainActor.run { if self.isScreenOff != off { self.isScreenOff = off; self.window?.toolbar?.validateVisibleItems() } } } } }
   private func queryDeviceScreenOff(serial: String) async -> Bool { do { let o = try await adb.shell("dumpsys power", serial: serial); if let r = o.range(of: "mWakefulness=") { return o[r.upperBound...].prefix { $0.isLetter } != "Awake" } } catch {}; return isScreenOff }
   @objc private func openFiles() { guard let s = deviceSerial else { return }; SessionCoordinator.shared.openFiles(for: Device(id: s, model: session.deviceName, state: .online)) }
