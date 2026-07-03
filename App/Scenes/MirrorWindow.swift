@@ -16,6 +16,7 @@ final class MirrorWindowController: NSWindowController {
   private var clipboardBridge: ClipboardBridge?; private let deviceDisplayName: String
   private let adb = ADBClient(); private var screenStatePoller: Timer?; private var autoScreenOffEnabled = false
   private var savedDeviceVolume: Int?; private var chromeRevealed = false; private var chromeHideTimer: Timer?; private var mouseMonitor: Any?
+  private var uhidKeyboard: UHIDKeyboardManager?
   private static let bezelInset: CGFloat = 8; private static let bezelCornerRadius: CGFloat = 34; private static let innerCornerRadius: CGFloat = 26; private static let chromeStrip: CGFloat = 32
   var deviceSerial: String?; var isRestarting = false
 
@@ -43,6 +44,7 @@ final class MirrorWindowController: NSWindowController {
   required init?(coder: NSCoder) { fatalError() }
 
   override func close() {
+    uhidKeyboard?.destroy(); uhidKeyboard = nil
     screenStatePoller?.invalidate(); screenStatePoller = nil; if let m = mouseMonitor { NSEvent.removeMonitor(m); mouseMonitor = nil }
     chromeHideTimer?.invalidate(); chromeHideTimer = nil; clipboardBridge?.stop(); clipboardBridge = nil
     Task { if recorder.isRecording { await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in recorder.stop { _ in c.resume() } } }; if isScreenOff, let writer = await session.control { try? await writer.send(.setScreenPowerMode(2)) }; if let s = deviceSerial, let v = savedDeviceVolume { try? await adb.shell("media volume --stream 3 --set \(v)", serial: s); savedDeviceVolume = nil }; await session.stop() }; saveWindowFrame(); super.close()
@@ -60,6 +62,10 @@ final class MirrorWindowController: NSWindowController {
     }
     if !isRestarting, autoScreenOff { try? await writer.send(.setScreenPowerMode(0)); await MainActor.run { self.isScreenOff = true } }; startScreenStatePoller()
     if !isRestarting { await MainActor.run { self.applyAudioOutput(self.audioOutput) } }; isRestarting = false
+    // UHID keyboard: wait for control channel to settle before creating
+    try? await Task.sleep(nanoseconds: 500_000_000)
+    let km = UHIDKeyboardManager { msg in Task { try? await writer.send(msg) } }
+    await MainActor.run { self.uhidKeyboard = km; self.eventView.uhidKeyboard = km; km.create() }
   }
 
   @objc private func takeScreenshot() { guard let b = renderer.lastPixelBuffer else { return }; let dir = pictureRoot(); let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-"); do { try Screenshotter.savePNG(pixelBuffer: b, to: dir.appendingPathComponent("Screenshot-\(stamp).png")); NSWorkspace.shared.activateFileViewerSelecting([dir.appendingPathComponent("Screenshot-\(stamp).png")]) } catch { showAlert(error) } }
