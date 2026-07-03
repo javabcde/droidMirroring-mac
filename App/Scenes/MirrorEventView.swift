@@ -55,18 +55,17 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func rightMouseDown(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
-  private var accDX: Double = 0; private var accDY: Double = 0; private var scrollOrigin: (Int32, Int32)?
+  private var scrollOrigin: (Int32, Int32)?
   override func scrollWheel(with event: NSEvent) {
-    if !event.momentumPhase.isEmpty && event.momentumPhase != .began { return }
     guard let (x, y) = devicePoint(for: event) else { return }
-    if scrollOrigin == nil || event.phase == .began { scrollOrigin = (x, y) }
-    let d = event.modifierFlags.contains(.option) ? 80.0 : 300.0
-    accDX += -event.scrollingDeltaX / d; accDY += event.scrollingDeltaY / d
-    if event.phase == .ended || event.phase == .cancelled {
-      let o = scrollOrigin ?? (x, y); let dx = accDX; let dy = accDY; accDX = 0; accDY = 0; scrollOrigin = nil
-      guard abs(dx) > 0.003 || abs(dy) > 0.003 else { return }
+    if event.phase == .began || (scrollOrigin == nil && event.momentumPhase == .began) { scrollOrigin = (x, y) }
+    let d = event.modifierFlags.contains(.option) ? 80.0 : 200.0
+    let dx = -event.scrollingDeltaX / d; let dy = event.scrollingDeltaY / d
+    if abs(dx) > 0.0001 || abs(dy) > 0.0001 {
+      let o = scrollOrigin ?? (x, y)
       controlSink?(.scroll(x: o.0, y: o.1, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: dx, vscroll: dy, buttons: currentButtons))
     }
+    if event.phase == .ended || event.phase == .cancelled || event.momentumPhase == .ended { scrollOrigin = nil }
   }
 
   private func sendTouch(_ action: TouchAction, event: NSEvent) { guard let (x, y) = devicePoint(for: event) else { return }; sendTouchAt(action, x: x, y: y) }
