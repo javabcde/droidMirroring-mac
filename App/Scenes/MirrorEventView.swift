@@ -195,10 +195,16 @@ final class MirrorEventView: NSView, NSTextInputClient {
 
   override func scrollWheel(with event: NSEvent) {
     guard let (x, y) = devicePoint(for: event) else { return }
-    // NSEvent.scrollingDeltaY is positive when scrolling content UP; on Android, positive vscroll
-    // means "scroll content up" too, so leave the sign alone.
-    let dx = event.scrollingDeltaX / 50.0
-    let dy = event.scrollingDeltaY / 50.0
+    // Negate: macOS trackpad → NSEvent.scrollingDeltaY positive → Mac content scrolls up.
+    // Scrcpy server convention: positive vscroll → touch moves DOWN → content scrolls up.
+    // Both produce "content scrolls up", but on scrcpy the touch coordinates are device
+    // pixels, and the server interprets positive vscroll as finger moving down. In practice
+    // this differs from Mac natural scrolling direction, so we negate.
+    // Normalize: scrollingDeltaY can be 10–800 for a trackpad swipe.
+    // Divisor 800 maps a full two-finger swipe to ≈1.0 (one page).
+    let dx = -event.scrollingDeltaX / 800.0
+    let dy = -event.scrollingDeltaY / 800.0
+    guard abs(dx) > 0.005 || abs(dy) > 0.005 else { return }
     controlSink?(.scroll(
       x: x, y: y,
       screenWidth: UInt16(deviceDimensions.width),
