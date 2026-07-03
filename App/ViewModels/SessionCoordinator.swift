@@ -22,7 +22,6 @@ final class SessionCoordinator: ObservableObject {
     mirrorWindows.removeAll(); fusionWindows.removeAll(); freeformTokens.removeAll(); freeformActivators.removeAll()
   }
 
-  // MARK: trusted devices — prevents auto-connecting to strangers on same Wi-Fi
   private var trustedKey: String { "mirror.trustedDeviceSerials" }
   private var trusted: Set<String> {
     get { Set(UserDefaults.standard.stringArray(forKey: trustedKey) ?? []) }
@@ -112,11 +111,12 @@ final class SessionCoordinator: ObservableObject {
     }
   }
 
+  // MARK: device disconnect — handles both IP and Android 11+ wireless serials
+
   func disconnectWirelessDevice(for device: Device) async {
     guard device.transport == .wifi else { return }
-    let parts = device.id.split(separator: ":")
-    guard parts.count == 2, let port = Int(parts[1]) else { return }
-    let host = String(parts[0])
+
+    // Clean up all sessions for this device
     if let c = mirrorWindows[device.id] {
       pollTasks[device.id]?.cancel(); pollTasks.removeValue(forKey: device.id)
       activePanel.removeValue(forKey: device.id); autoMirroredSerials.remove(device.id)
@@ -126,9 +126,28 @@ final class SessionCoordinator: ObservableObject {
     if let token = freeformTokens.removeValue(forKey: device.id), let a = freeformActivators[device.id] { await a.deactivate(token) }
     filesWindows[device.id]?.close(); filesWindows.removeValue(forKey: device.id)
     autoMirroredSerials.remove(device.id)
-    let w = ResourceLocator.wirelessClient()
-    do { try await w.disconnect(host: host, port: port); log.notice("disconnected \(device.id)") }
-    catch { log.error("disconnect failed: \(error)") }
+
+    // Disconnect: IP-style (192.168.1.100:5555) or Android 11+ (adb-XXX._adb-tls-connect._tcp)
+    let parts = device.id.split(separator: ":").map(String.init)
+    if parts.count == 2, let port = Int(parts[1]) {
+      let wireless = ResourceLocator.wirelessClient()
+      do { try await wireless.disconnect(host: parts[0], port: port); log.notice("disconnected \(device.id)") }
+      catch { log.error("disconnect failed for \(device.id): \(error)") }
+    } else {
+      // Android 11+ wireless serial: adb disconnect <serial>
+      await disconnectBySerial(device.id)
+    }
+  }
+
+  private func disconnectBySerial(_ serial: String) async {
+    guard let adbBin = Bundle.main.url(forResource: "adb", withExtension: nil)
+            ?? URL(fileURLWithPath: "/usr/local/bin/adb") else { return }
+    let p = Process()
+    p.executableURL = adbBin
+    p.arguments = ["disconnect", serial]
+    let pipe = Pipe(); p.standardOutput = pipe; p.standardError = pipe
+    do { try p.run(); p.waitUntilExit(); log.notice("disconnected \(serial)") }
+    catch { log.error("adb disconnect failed for \(serial): \(error)") }
   }
 
   func openFiles(for device: Device) {
@@ -236,9 +255,7 @@ final class SessionCoordinator: ObservableObject {
 
   func cleanupScrcpyServers() async throws {
     let devices = try await adb.listDevices()
-    for d in devices where d.state == .online {
-      try await adb.shell("rm -f /data/local/tmp/scrcpy-server*.jar", serial: d.id)
-    }
+    for d in devices where d.state == .online { try await adb.shell("rm -f /data/local/tmp/scrcpy-server*.jar", serial: d.id) }
   }
 }
 
