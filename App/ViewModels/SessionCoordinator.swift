@@ -241,6 +241,60 @@ final class SessionCoordinator: ObservableObject {
     }
   }
 
+  // MARK: device disconnect
+
+  /// Disconnect a wireless device: stop sessions, clean up state, call adb disconnect.
+  /// The device stays trusted — user can reconnect without re-entering the pairing code.
+  func disconnectWirelessDevice(for device: Device) async {
+    guard device.transport == .wifi else { return }
+
+    // Parse serial (e.g. "192.168.1.100:5555") into host and port
+    let parts = device.id.split(separator: ":")
+    guard parts.count == 2, let port = Int(parts[1]) else {
+      log.error("invalid Wi-Fi serial format for disconnect: \(device.id)")
+      return
+    }
+    let host = String(parts[0])
+
+    // Clean up Mirror session if active
+    if let controller = mirrorWindows[device.id] {
+      pollTasks[device.id]?.cancel()
+      pollTasks.removeValue(forKey: device.id)
+      activePanel.removeValue(forKey: device.id)
+      autoMirroredSerials.remove(device.id)
+      await controller.session.stop()
+      controller.close()
+      mirrorWindows.removeValue(forKey: device.id)
+    }
+
+    // Clean up Fusion windows for this device
+    let fusionKeys = fusionWindows.keys.filter { $0.hasPrefix(device.id + "|") }
+    for key in fusionKeys {
+      fusionWindows[key]?.close()
+      fusionWindows[key] = nil
+    }
+    if let token = freeformTokens.removeValue(forKey: device.id),
+       let activator = freeformActivators[device.id] {
+      await activator.deactivate(token)
+    }
+
+    // Clean up Files window if open
+    filesWindows[device.id]?.close()
+    filesWindows.removeValue(forKey: device.id)
+
+    // Remove from auto-open tracking
+    autoMirroredSerials.remove(device.id)
+
+    // Issue adb disconnect
+    let wireless = ResourceLocator.wirelessClient()
+    do {
+      try await wireless.disconnect(host: host, port: port)
+      log.notice("disconnected wireless device \(device.id)")
+    } catch {
+      log.error("disconnect failed for \(device.id): \(error)")
+    }
+  }
+
   func openFiles(for device: Device) {
     if let existing = filesWindows[device.id] {
       existing.window?.makeKeyAndOrderFront(nil)
