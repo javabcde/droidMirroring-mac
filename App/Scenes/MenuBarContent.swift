@@ -61,8 +61,13 @@ private struct MenuDeviceRow: View {
       }
       Spacer()
       if device.transport == .wifi {
-        Button { confirmDisconnect() } label: { Image(systemName: "eject.circle").foregroundStyle(.secondary) }
-          .buttonStyle(.plain).fixedSize()
+        Button {
+          Task { await SessionCoordinator.shared.disconnectWirelessDevice(for: device) }
+        } label: {
+          Image(systemName: "eject.circle").foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain).fixedSize()
+        .help("Disconnect")
       }
       Button { showMenu.toggle() } label: { Image(systemName: "ellipsis.circle") }.buttonStyle(.plain).fixedSize()
         .onHover { hovering in
@@ -83,17 +88,5 @@ private struct MenuDeviceRow: View {
     .padding(.horizontal, 8).padding(.vertical, 6)
     .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
     .onTapGesture(count: 2) { Task { await SessionCoordinator.shared.startMirror(for: device) } }
-  }
-
-  private func confirmDisconnect() {
-    let alert = NSAlert()
-    alert.messageText = "Disconnect device?"
-    alert.informativeText = "The device will be removed from this list. You can reconnect from the Pairing window without entering a code again."
-    alert.addButton(withTitle: "Cancel")
-    alert.addButton(withTitle: "Disconnect")
-    alert.alertStyle = .warning
-    if alert.runModal() == .alertSecondButtonReturn {
-      Task { await SessionCoordinator.shared.disconnectWirelessDevice(for: device) }
-    }
   }
 }
