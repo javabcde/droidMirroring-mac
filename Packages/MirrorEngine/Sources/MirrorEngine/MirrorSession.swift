@@ -27,6 +27,13 @@ public final class MirrorSession: @unchecked Sendable {
   public private(set) var control: ControlSocketWriter?
   public private(set) var deviceMessageReader: DeviceMessageReader?
   public private(set) var audioEnabled: Bool = false
+  /// When true the receive loop skips decode — keeps socket drained without
+  /// piling up frames in the decoder. Set by the owner when the window is occluded.
+  public var paused: Bool {
+    get { _paused }
+    set { _paused = newValue }
+  }
+  private nonisolated(unsafe) var _paused = false
 
   /// Pause audio playback on the Mac side.  scrcpy still streams audio packets;
   /// they are silently dropped until `resumeAudio()` is called.
@@ -149,6 +156,7 @@ public final class MirrorSession: @unchecked Sendable {
     while !Task.isCancelled {
       do {
         let frame = try await stream.nextFrame()
+        if _paused { continue }
         let pts = CMTime(value: CMTimeValue(frame.pts), timescale: 1_000_000)
         try decoder.feed(packet: frame.payload, pts: pts, isConfig: frame.isConfig)
       } catch is CancellationError {

@@ -36,6 +36,9 @@ final class MirrorWindowController: NSWindowController {
     NSLayoutConstraint.activate([bezel.leadingAnchor.constraint(equalTo: container.leadingAnchor), bezel.trailingAnchor.constraint(equalTo: container.trailingAnchor), bezel.bottomAnchor.constraint(equalTo: container.bottomAnchor), bezel.topAnchor.constraint(equalTo: container.topAnchor, constant: Self.chromeStrip)])
     window.contentView = container; window.center(); super.init(window: window)
     NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in self?.saveWindowFrame() }
+    NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main) { [weak self] _ in
+      self?.session.paused = !(self?.window?.isVisible == true && self?.window?.occlusionState.contains(.visible) == true)
+    }
     let overlay = MirrorOverlayBar(onMore: { [weak self] anchor in self?.showMoreMenu(anchor: anchor) }); self.overlayBar = overlay; container.addSubview(overlay); overlay.translatesAutoresizingMaskIntoConstraints = false
     NSLayoutConstraint.activate([overlay.centerXAnchor.constraint(equalTo: container.centerXAnchor), overlay.topAnchor.constraint(equalTo: container.topAnchor, constant: 2)])
     renderer.onDimensionsChanged = { [weak self] size in Task { @MainActor in self?.applyDimensions(size) } }; renderer.onFrame = { [weak self] buffer, pts in self?.recorder.append(pixelBuffer: buffer, pts: pts) }
