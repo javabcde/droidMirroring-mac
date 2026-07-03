@@ -5,14 +5,10 @@ import ScrcpyClient
 final class MirrorEventView: NSView, NSTextInputClient {
   var controlSink: ((ControlMessage) -> Void)?
   var deviceDimensions: CGSize = .zero
-  /// UHID keyboard manager — set by MirrorWindowController after creating session
   var uhidKeyboard: UHIDKeyboardManager?
 
   // MARK: IME
-  private var markedText: NSMutableAttributedString?
-  private var isComposingIME = false
-  private var _currentFrame: NSRect = .zero
-
+  private var markedText: NSMutableAttributedString?; private var isComposingIME = false; private var _currentFrame: NSRect = .zero
   func selectedRange() -> NSRange { markedText.map { NSRange(location: $0.length, length: 0) } ?? NSRange() }
   func markedRange() -> NSRange { markedText?.length ?? 0 > 0 ? NSRange(location: 0, length: markedText!.length) : NSRange() }
   func hasMarkedText() -> Bool { markedText?.length ?? 0 > 0 }
@@ -22,46 +18,62 @@ final class MirrorEventView: NSView, NSTextInputClient {
   func characterIndex(for p: NSPoint) -> Int { 0 }
 
   func insertText(_ string: Any, replacementRange: NSRange) {
-    var t: String?
-    if let a = string as? NSAttributedString { t = a.string } else if let s = string as? String { t = s }
+    var t: String?; if let a = string as? NSAttributedString { t = a.string } else if let s = string as? String { t = s }
     guard let t, !t.isEmpty else { return }
-    let c = isComposingIME || markedText != nil || isCJKIMEActive
-    if c && t.allSatisfy({ $0.isASCII }) { return }
+    if (isComposingIME || markedText != nil || isCJKIMEActive) && t.allSatisfy({ $0.isASCII }) { return }
     markedText = nil; isComposingIME = false
     if t.allSatisfy({ $0.isASCII }) { for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
     else { controlSink?(.setClipboard(text: t, paste: true)) }
   }
-
-  func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
-    if let a = string as? NSAttributedString { markedText = NSMutableAttributedString(attributedString: a) }
-    else if let s = string as? String { markedText = NSMutableAttributedString(string: s) }
-    isComposingIME = true
-  }
+  func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) { if let a = string as? NSAttributedString { markedText = NSMutableAttributedString(attributedString: a) } else if let s = string as? String { markedText = NSMutableAttributedString(string: s) }; isComposingIME = true }
   func unmarkText() { markedText = nil; isComposingIME = false }
 
   // MARK: init
-  private var trackingArea: NSTrackingArea?
-  private var currentButtons: MotionButton = []
-
+  private var trackingArea: NSTrackingArea?; private var currentButtons: MotionButton = []
   init(layer hostedLayer: CALayer) { super.init(frame: .zero); wantsLayer = true; layer = hostedLayer }
   required init?(coder: NSCoder) { fatalError() }
-
   override var acceptsFirstResponder: Bool { true }
   override func becomeFirstResponder() -> Bool { true }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
   override var mouseDownCanMoveWindow: Bool { false }
-
-  override func updateTrackingAreas() {
-    super.updateTrackingAreas(); if let e = trackingArea { removeTrackingArea(e) }
-    let a = NSTrackingArea(rect: bounds, options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect], owner: self, userInfo: nil)
-    addTrackingArea(a); trackingArea = a
-  }
+  override func updateTrackingAreas() { super.updateTrackingAreas(); if let e = trackingArea { removeTrackingArea(e) }; let a = NSTrackingArea(rect: bounds, options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect], owner: self, userInfo: nil); addTrackingArea(a); trackingArea = a }
   override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); window?.makeFirstResponder(self) }
 
-  // MARK: pointer
-  override func mouseDown(with e: NSEvent) { currentButtons.insert(.primary); sendTouch(.down, event: e) }
-  override func mouseDragged(with e: NSEvent) { sendTouch(.move, event: e) }
-  override func mouseUp(with e: NSEvent) { sendTouch(.up, event: e); currentButtons.remove(.primary) }
+  // MARK: pointer — with swipe fling for lock screen gestures
+  private var dragStartDevice: (Int32, Int32)?
+  private var dragLastDevice: (Int32, Int32)?
+
+  override func mouseDown(with e: NSEvent) {
+    currentButtons.insert(.primary)
+    if let pt = devicePoint(for: e) { dragStartDevice = pt; dragLastDevice = pt }
+    sendTouch(.down, event: e)
+  }
+
+  override func mouseDragged(with e: NSEvent) {
+    if let pt = devicePoint(for: e) { dragLastDevice = pt }
+    sendTouch(.move, event: e)
+  }
+
+  override func mouseUp(with e: NSEvent) {
+    // Compute swipe distance: if user dragged significantly, "fling" the
+    // touch further in the same direction before releasing. This makes
+    // three-finger lock-screen swipes reach the top half of the screen
+    // even when the trackpad only moves a short distance.
+    if let start = dragStartDevice, let last = dragLastDevice, let cur = devicePoint(for: e) {
+      let dx = Int32((Double(cur.0) - Double(start.0)) * 2.0)
+      let dy = Int32((Double(cur.1) - Double(start.1)) * 2.0)
+      let flingX = max(0, min(Int32(deviceDimensions.width) - 1, cur.0 + dx))
+      let flingY = max(0, min(Int32(deviceDimensions.height) - 1, cur.1 + dy))
+      let dist = abs(cur.0 - start.0) + abs(cur.1 - start.1)
+      if dist > 8 {
+        // Significant drag (not a tap): fling and release at projected point
+        sendTouchAt(.move, x: flingX, y: flingY)
+      }
+    }
+    sendTouch(.up, event: e)
+    currentButtons.remove(.primary); dragStartDevice = nil; dragLastDevice = nil
+  }
+
   override func mouseMoved(with e: NSEvent) { sendTouch(.hoverMove, event: e) }
   override func rightMouseDown(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
@@ -81,6 +93,10 @@ final class MirrorEventView: NSView, NSTextInputClient {
 
   private func sendTouch(_ action: TouchAction, event: NSEvent) {
     guard let (x, y) = devicePoint(for: event) else { return }
+    sendTouchAt(action, x: x, y: y)
+  }
+
+  private func sendTouchAt(_ action: TouchAction, x: Int32, y: Int32) {
     controlSink?(.touch(action: action, x: x, y: y, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), pressure: action == .up ? 0 : 1, buttons: (action == .hoverMove) ? [] : currentButtons))
   }
 
@@ -97,28 +113,17 @@ final class MirrorEventView: NSView, NSTextInputClient {
     let n = (Unmanaged<CFString>.fromOpaque(p).takeUnretainedValue() as String).lowercased()
     return n.contains("pinyin") || n.contains("wubi") || n.contains("cangjie") || n.contains("bopomofo") || n.contains("japanese") || n.contains("korean") || n.contains("简体") || n.contains("繁体") || n.contains("拼音") || n.contains("五笔") || n.contains("仓颉") || n.contains("注音") || n.contains("微信") || n.contains("搜狗") || n.contains("百度")
   }
-
   override func keyDown(with e: NSEvent) {
-    // UHID keyboard handles ASCII keys directly
     if uhidKeyboard?.handleKeyDown(with: e) == true { return }
-    // Fallback to scrcpy keycode for navigation keys
     if let kc = MirrorKeyMap.androidKeycode(for: e) {
       if let m = markedText, m.length > 0 { let t = m.string; markedText = nil; isComposingIME = false; for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
-      else { controlSink?(.keycode(kc, action: .down, metaState: MirrorKeyMap.metaState(for: e))) }
-      return
+      else { controlSink?(.keycode(kc, action: .down, metaState: MirrorKeyMap.metaState(for: e))) }; return
     }
-    // Route through IME pipeline for CJK input
     let hm = isComposingIME; inputContext?.handleEvent(e)
     if !isComposingIME, !hm, let ch = e.characters, !ch.isEmpty, !ch.allSatisfy({ $0.isASCII }) { controlSink?(.setClipboard(text: ch, paste: true)) }
   }
-
-  override func keyUp(with e: NSEvent) {
-    if uhidKeyboard?.handleKeyUp(with: e) == true { return }
-    if let kc = MirrorKeyMap.androidKeycode(for: e) { controlSink?(.keycode(kc, action: .up, metaState: MirrorKeyMap.metaState(for: e))) }
-  }
-
+  override func keyUp(with e: NSEvent) { if uhidKeyboard?.handleKeyUp(with: e) == true { return }; if let kc = MirrorKeyMap.androidKeycode(for: e) { controlSink?(.keycode(kc, action: .up, metaState: MirrorKeyMap.metaState(for: e))) } }
   override func flagsChanged(with e: NSEvent) { uhidKeyboard?.handleFlagsChanged(with: e) }
-
   override func doCommand(by sel: Selector) {
     func commit() { guard let m = markedText, m.length > 0 else { return }; let t = m.string; markedText = nil; isComposingIME = false; for ch in t { if let hk = HIDKeyboard.hidKeycode(ascii: ch) { uhidKeyboard?.sendKey(hk) } } }
     if sel == #selector(insertTab(_:)) { commit(); uhidKeyboard?.sendKey(0x2B) }
