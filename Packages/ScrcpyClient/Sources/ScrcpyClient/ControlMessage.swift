@@ -30,8 +30,20 @@ public extension ControlMessage {
   static func setScreenPowerMode(_ mode: UInt8) -> ControlMessage { ControlMessage(type: .setScreenPowerMode, payload: Data([mode])) }
 
   // UHID
-  static func uhidCreate(id: UInt16, descriptor: Data) -> ControlMessage { var p = Data(); p.appendBE(UInt16: id); p.appendBE(UInt16: UInt16(descriptor.count)); p.append(descriptor); return ControlMessage(type: .uhidCreate, payload: p) }
+  /// scrcpy wire format: [id:2][vendor_id:2][product_id:2][name_len:1][name:N][desc_len:2][desc:N]
+  /// scrcpy sends vendor_id=0, product_id=0, name=NULL (length 0)
+  static func uhidCreate(id: UInt16, descriptor: Data) -> ControlMessage {
+    var p = Data()
+    p.appendBE(UInt16: id)
+    p.appendBE(UInt16: 0)  // vendor_id
+    p.appendBE(UInt16: 0)  // product_id
+    p.append(0 as UInt8)   // name length = 0 (NULL)
+    p.appendBE(UInt16: UInt16(descriptor.count))
+    p.append(descriptor)
+    return ControlMessage(type: .uhidCreate, payload: p)
+  }
   static func uhidInput(id: UInt16, data: Data) -> ControlMessage { var p = Data(); p.appendBE(UInt16: id); p.append(data); return ControlMessage(type: .uhidInput, payload: p) }
+  /// UHID device cleaned up when control socket closes — no explicit destroy message in scrcpy protocol
   static func uhidDestroy(id: UInt16) -> ControlMessage { ControlMessage(type: .uhidCreate, payload: Data()) }
 }
 
