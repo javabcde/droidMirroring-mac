@@ -12,6 +12,7 @@ private let log = Logger(subsystem: "com.droidmirroring.app", category: "coordin
 @MainActor
 final class SessionCoordinator: ObservableObject {
   static let shared = SessionCoordinator()
+
   func shutdownEverything() async {
     await withTaskGroup(of: Void.self) { group in
       for (_, c) in mirrorWindows { group.addTask { await c.session.stop() } }
@@ -19,9 +20,11 @@ final class SessionCoordinator: ObservableObject {
       for (s, t) in freeformTokens { if let a = freeformActivators[s] { group.addTask { await a.deactivate(t) } } }
     }; mirrorWindows.removeAll(); fusionWindows.removeAll(); freeformTokens.removeAll(); freeformActivators.removeAll()
   }
+
   private var tk: String { "mirror.trustedDeviceSerials" }
   private var trusted: Set<String> { get { Set(UserDefaults.standard.stringArray(forKey: tk) ?? []) } set { UserDefaults.standard.set(Array(newValue), forKey: tk) } }
   func trustDevice(_ s: String) { var x = trusted; x.insert(s); trusted = x }
+
   private let adb = ADBClient()
   private var mirrorWindows: [String: MirrorWindowController] = [:]
   private var filesWindows: [String: FilesWindowController] = [:]
@@ -63,7 +66,7 @@ final class SessionCoordinator: ObservableObject {
       let se = { if case DroidMirroringError.scrcpyProtocol = error { return true }; return false }()
       if (ae || se), let mc = c { log.warning("retry no audio for \(d.id)"); await mc.session.stop(); do { try await launchSession(for: d, displayId: did, into: mc, audioEnabled: false); startActiveDisplayPolling(for: d); return } catch { log.error("retry failed: \(error)") } }
       if !ae && !se { let e = error.localizedDescription; if e.contains("display") || e.contains("short read") || e.contains("scrcpy") { activePanel.removeValue(forKey: d.id); mirrorWindows[d.id]?.close(); mirrorWindows.removeValue(forKey: d.id); do { let m2 = try MirrorWindowController(deviceName: d.model.isEmpty ? d.id : d.model); m2.deviceSerial = d.id; mirrorWindows[d.id] = m2; try await launchSession(for: d, displayId: 0, into: m2); startActiveDisplayPolling(for: d); return } catch {} } }
-      NSAlert().then { $0.messageText = "Failed"; $0.informativeText = "\(error.localizedDescription)"; $0.addButton(withTitle: "OK"); $0.runModal() }
+      let alert = NSAlert(); alert.messageText = "Failed to start Mirror"; alert.informativeText = "\(error.localizedDescription)"; alert.addButton(withTitle: "OK"); alert.runModal()
       mirrorWindows[d.id]?.close(); mirrorWindows[d.id] = nil
     }
   }
@@ -81,10 +84,42 @@ final class SessionCoordinator: ObservableObject {
 
   func openFiles(for d: Device) { trustDevice(d.id); if let e = filesWindows[d.id] { e.window?.makeKeyAndOrderFront(nil); return }; let c = FilesWindowController(device: d); filesWindows[d.id] = c; c.showWindow(nil); NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: c.window, queue: .main) { [weak self] _ in Task { @MainActor [weak self] in self?.filesWindows.removeValue(forKey: d.id) } } }
   func appCatalog() -> AppCatalog { AppCatalog(adb: adb) }
-  func openDesktop(for d: Device, size: CGSize = CGSize(width: 2560, height: 1440), dpi: Int = 160) async { trustDevice(d.id); let pk = InstalledApp(packageName: "desktop", label: "Desktop", iconPNG: nil); let k = fk(d.id, pk.packageName); if let e = fusionWindows[k] { e.window?.makeKeyAndOrderFront(nil); return }; do { let a = freeformActivators[d.id] ?? FreeformActivator(adb: adb); freeformActivators[d.id] = a; if freeformTokens[d.id] == nil { freeformTokens[d.id] = try await a.activate(serial: d.id) }; let c = try FusionAppWindowController(appLabel: "Desktop"); fusionWindows[k] = c; c.showWindow(nil); let s = try await FusionLauncher(adb: adb, scrcpyResources: try ResourceLocator.scrcpyResources()).openDesktop(serial: d.id, size: size, dpi: dpi, frameSink: { b, _ in c.renderer.render(pixelBuffer: b) }); await c.attach(s) } catch { NSAlert(error: error).runModal(); fusionWindows[k]?.close(); fusionWindows[k] = nil } }
-  func launchFusionApp(for d: Device, app: InstalledApp, size: CGSize = CGSize(width: 2560, height: 1440), dpi: Int = 160) async { trustDevice(d.id); let k = fk(d.id, app.packageName); if let e = fusionWindows[k] { e.window?.makeKeyAndOrderFront(nil); return }; do { let a = freeformActivators[d.id] ?? FreeformActivator(adb: adb); freeformActivators[d.id] = a; if freeformTokens[d.id] == nil { freeformTokens[d.id] = try await a.activate(serial: d.id) }; let c = try FusionAppWindowController(appLabel: app.label); fusionWindows[k] = c; c.showWindow(nil); let s = try await FusionLauncher(adb: adb, scrcpyResources: try ResourceLocator.scrcpyResources()).launch(packageName: app.packageName, serial: d.id, size: size, dpi: dpi, frameSink: { b, _ in c.renderer.render(pixelBuffer: b) }); await c.attach(s) } catch { NSAlert(error: error).runModal(); fusionWindows[k]?.close(); fusionWindows[k] = nil } }
+
+  func openDesktop(for d: Device, size: CGSize = CGSize(width: 2560, height: 1440), dpi: Int = 160) async {
+    trustDevice(d.id)
+    let pk = InstalledApp(packageName: "desktop", label: "Desktop", iconPNG: nil); let k = fk(d.id, pk.packageName)
+    if let e = fusionWindows[k] { e.window?.makeKeyAndOrderFront(nil); return }
+    do {
+      let a = freeformActivators[d.id] ?? FreeformActivator(adb: adb); freeformActivators[d.id] = a
+      if freeformTokens[d.id] == nil { freeformTokens[d.id] = try await a.activate(serial: d.id) }
+      let c = try FusionAppWindowController(appLabel: "Desktop")
+      fusionWindows[k] = c; c.showWindow(nil)
+      let s = try await FusionLauncher(adb: adb, scrcpyResources: try ResourceLocator.scrcpyResources()).openDesktop(serial: d.id, size: size, dpi: dpi, frameSink: { b, _ in c.renderer.render(pixelBuffer: b) })
+      await c.attach(s)
+    } catch { NSAlert(error: error).runModal(); fusionWindows[k]?.close(); fusionWindows[k] = nil }
+  }
+
+  func launchFusionApp(for d: Device, app: InstalledApp, size: CGSize = CGSize(width: 2560, height: 1440), dpi: Int = 160) async {
+    trustDevice(d.id)
+    let k = fk(d.id, app.packageName)
+    if let e = fusionWindows[k] { e.window?.makeKeyAndOrderFront(nil); return }
+    do {
+      let a = freeformActivators[d.id] ?? FreeformActivator(adb: adb); freeformActivators[d.id] = a
+      if freeformTokens[d.id] == nil { freeformTokens[d.id] = try await a.activate(serial: d.id) }
+      let c = try FusionAppWindowController(appLabel: app.label); fusionWindows[k] = c; c.showWindow(nil)
+      let s = try await FusionLauncher(adb: adb, scrcpyResources: try ResourceLocator.scrcpyResources()).launch(packageName: app.packageName, serial: d.id, size: size, dpi: dpi, frameSink: { b, _ in c.renderer.render(pixelBuffer: b) })
+      await c.attach(s)
+    } catch { NSAlert(error: error).runModal(); fusionWindows[k]?.close(); fusionWindows[k] = nil }
+  }
+
   private func fk(_ s: String, _ p: String) -> String { "\(s)|\(p)" }
-  func stopMirror(for d: Device) async { pollTasks[d.id]?.cancel(); pollTasks.removeValue(forKey: d.id); activePanel.removeValue(forKey: d.id); for k in fusionWindows.keys.filter({ $0.hasPrefix(d.id + "|") }) { fusionWindows[k]?.close(); fusionWindows[k] = nil }; if let t = freeformTokens.removeValue(forKey: d.id), let a = freeformActivators[d.id] { await a.deactivate(t) }; guard let c = mirrorWindows[d.id] else { return }; await c.session.stop(); c.close(); mirrorWindows.removeValue(forKey: d.id) }
+
+  func stopMirror(for d: Device) async {
+    pollTasks[d.id]?.cancel(); pollTasks.removeValue(forKey: d.id); activePanel.removeValue(forKey: d.id)
+    for k in fusionWindows.keys.filter({ $0.hasPrefix(d.id + "|") }) { fusionWindows[k]?.close(); fusionWindows[k] = nil }
+    if let t = freeformTokens.removeValue(forKey: d.id), let a = freeformActivators[d.id] { await a.deactivate(t) }
+    guard let c = mirrorWindows[d.id] else { return }; await c.session.stop(); c.close(); mirrorWindows.removeValue(forKey: d.id)
+  }
 
   private func launchSession(for d: Device, displayId: Int, into c: MirrorWindowController, audioEnabled: Bool = true) async throws {
     let res = try ResourceLocator.scrcpyResources(); let l = ScrcpyServerLauncher(adb: adb, serial: d.id, resources: res); let u = UserDefaults.standard
@@ -92,7 +127,8 @@ final class SessionCoordinator: ObservableObject {
     try await c.session.start(launcher: l, options: opts); await c.bindControl()
   }
 
-  func restartMirror(for serial: String) async { guard let c = mirrorWindows[serial] else { return }; pollTasks[serial]?.cancel(); pollTasks[serial] = nil; let did = activePanel[serial]?.id ?? 0; let dev = Device(id: serial, model: await c.session.deviceName, state: .online); await c.session.stop(); do { try await launchSession(for: dev, displayId: did, into: c); startActiveDisplayPolling(for: dev) } catch { c.isRestarting = false; c.close(); mirrorWindows.removeValue(forKey: serial); activePanel.removeValue(forKey: serial) } }
+  func restartMirror(for serial: String) async { guard let c = mirrorWindows[serial] else { return }; pollTasks[serial]?.cancel(); pollTasks[serial] = nil; let did = activePanel[serial]?.id ?? 0; let dev = Device(id: serial, model: c.session.deviceName, state: .online); await c.session.stop(); do { try await launchSession(for: dev, displayId: did, into: c); startActiveDisplayPolling(for: dev) } catch { c.isRestarting = false; c.close(); mirrorWindows.removeValue(forKey: serial); activePanel.removeValue(forKey: serial) } }
+
   private func startActiveDisplayPolling(for d: Device) { pollTasks[d.id]?.cancel(); pollTasks[d.id] = Task { [weak self] in guard let self else { return }; var t = 0; while !Task.isCancelled { try? await Task.sleep(nanoseconds: 1_500_000_000); t += 1; await checkActiveDisplay(for: d, tick: t) } } }
   func refreshActiveDisplay(for d: Device) async { await checkActiveDisplay(for: d, tick: -1, force: true) }
   private func checkActiveDisplay(for d: Device, tick: Int, force: Bool = false) async { guard let c = mirrorWindows[d.id] else { return }; let dis = (try? await adb.physicalDisplays(serial: d.id)) ?? []; let r = dis.sorted { a, b in a.state.rank != b.state.rank ? a.state.rank > b.state.rank : a.area > b.area }; guard let pick = r.first else { return }; let cur = activePanel[d.id]; guard force || cur == nil || cur?.id != pick.id || cur?.w != pick.width || cur?.h != pick.height || cur?.rot != pick.rotation else { return }; activePanel[d.id] = (id: pick.id, w: pick.width, h: pick.height, rot: pick.rotation); await c.session.stop(); do { try await launchSession(for: d, displayId: pick.id, into: c) } catch {} }
