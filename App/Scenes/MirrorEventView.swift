@@ -41,7 +41,16 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func mouseDown(with e: NSEvent) { currentButtons.insert(.primary); dragMoved = false; if let pt = devicePoint(for: e) { dragStartDevice = pt }; sendTouch(.down, event: e) }
   override func mouseDragged(with e: NSEvent) { dragMoved = true; sendTouch(.move, event: e) }
   override func mouseUp(with e: NSEvent) {
-    if dragMoved, let start = dragStartDevice, let cur = devicePoint(for: e) { let h = Int32(deviceDimensions.height); let dy = (cur.1 - start.1) * 2; if start.1 > h * 2 / 3 && cur.1 < start.1 && abs(cur.1 - start.1) > 8 { sendTouchAt(.move, x: max(0, min(Int32(deviceDimensions.width) - 1, cur.0)), y: max(0, min(h - 1, cur.1 + dy))) } }
+    if dragMoved, let start = dragStartDevice, let cur = devicePoint(for: e) {
+      // Fling: project touch 3x further for lock screen / recents gestures
+      let dy = (cur.1 - start.1) * 3
+      let dx = (cur.0 - start.0) * 3
+      let moved = abs(cur.1 - start.1) + abs(cur.0 - start.0)
+      if moved > 8 && (cur.1 + dy != cur.1 || cur.0 + dx != cur.0) {
+        let h = Int32(deviceDimensions.height); let w = Int32(deviceDimensions.width)
+        sendTouchAt(.move, x: max(0, min(w - 1, cur.0 + dx)), y: max(0, min(h - 1, cur.1 + dy)))
+      }
+    }
     sendTouch(.up, event: e); currentButtons.remove(.primary); dragStartDevice = nil; dragMoved = false
   }
   override func mouseMoved(with e: NSEvent) { sendTouch(.hoverMove, event: e) }
@@ -53,7 +62,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
     if !event.momentumPhase.isEmpty && event.momentumPhase != .began { return }
     guard let (x, y) = devicePoint(for: event) else { return }
     if scrollOrigin == nil || event.phase == .began { scrollOrigin = (x, y) }
-    let d = event.modifierFlags.contains(.option) ? 80.0 : 400.0
+    let d = event.modifierFlags.contains(.option) ? 80.0 : 300.0
     accDX += -event.scrollingDeltaX / d; accDY += event.scrollingDeltaY / d
     if event.phase == .ended || event.phase == .cancelled {
       let o = scrollOrigin ?? (x, y); let dx = accDX; let dy = accDY; accDX = 0; accDY = 0; scrollOrigin = nil
