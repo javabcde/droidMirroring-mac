@@ -45,16 +45,14 @@ final class MirrorEventView: NSView, NSTextInputClient {
   }
   override func mouseDragged(with e: NSEvent) { dragMoved = true; sendTouch(.move, event: e) }
   override func mouseUp(with e: NSEvent) {
-    // Fling: only for fast upward swipes from bottom third (lock screen unlock pattern).
-    // Normal drags (icons, notification shade) are passed through faithfully.
     if dragMoved, let start = dragStartDevice, let cur = devicePoint(for: e) {
-      let h = deviceDimensions.height
-      let dy = Int32((Double(cur.1) - Double(start.1)) * 2.0)
+      let h = Int32(deviceDimensions.height)
+      let dy = (cur.1 - start.1) * 2
       let dyAbs = abs(cur.1 - start.1)
-      let fromBottom = start.1 > h * 2 / 3 && cur.1 < start.1   // started bottom, moving up
-      if fromBottom && dyAbs > 8 {
+      // Fling only for upward swipes from bottom third (lock screen unlock)
+      if start.1 > h * 2 / 3 && cur.1 < start.1 && dyAbs > 8 {
         let flingY = max(0, min(h - 1, cur.1 + dy))
-        let flingX = max(0, min(deviceDimensions.width - 1, cur.0))
+        let flingX = max(0, min(Int32(deviceDimensions.width) - 1, cur.0))
         sendTouchAt(.move, x: flingX, y: flingY)
       }
     }
@@ -65,32 +63,23 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func rightMouseDown(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
-  // MARK: scroll — accumulate per gesture, skip momentum
+  // MARK: scroll
   private var accDX: Double = 0; private var accDY: Double = 0; private var scrollOrigin: (Int32, Int32)?
-
   override func scrollWheel(with event: NSEvent) {
-    // Skip momentum/inertia events — these are post-gesture coasting that
-    // Android already simulates via fling. Including them causes double-scroll.
     if event.momentumPhase != .none && event.momentumPhase != .began { return }
     guard let (x, y) = devicePoint(for: event) else { return }
-    // Record position on first event or .began phase
     if scrollOrigin == nil || event.phase == .began { scrollOrigin = (x, y) }
     let fast = event.modifierFlags.contains(.option); let d = fast ? 80.0 : 400.0
     accDX += -event.scrollingDeltaX / d; accDY += event.scrollingDeltaY / d
     if event.phase == .ended || event.phase == .cancelled {
-      let origin = scrollOrigin ?? (x, y); let dx = accDX; let dy = accDY
-      accDX = 0; accDY = 0; scrollOrigin = nil
+      let origin = scrollOrigin ?? (x, y); let dx = accDX; let dy = accDY; accDX = 0; accDY = 0; scrollOrigin = nil
       guard abs(dx) > 0.003 || abs(dy) > 0.003 else { return }
       controlSink?(.scroll(x: origin.0, y: origin.1, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: dx, vscroll: dy, buttons: currentButtons))
     }
   }
 
-  private func sendTouch(_ action: TouchAction, event: NSEvent) {
-    guard let (x, y) = devicePoint(for: event) else { return }; sendTouchAt(action, x: x, y: y)
-  }
-  private func sendTouchAt(_ action: TouchAction, x: Int32, y: Int32) {
-    controlSink?(.touch(action: action, x: x, y: y, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), pressure: action == .up ? 0 : 1, buttons: (action == .hoverMove) ? [] : currentButtons))
-  }
+  private func sendTouch(_ action: TouchAction, event: NSEvent) { guard let (x, y) = devicePoint(for: event) else { return }; sendTouchAt(action, x: x, y: y) }
+  private func sendTouchAt(_ action: TouchAction, x: Int32, y: Int32) { controlSink?(.touch(action: action, x: x, y: y, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), pressure: action == .up ? 0 : 1, buttons: (action == .hoverMove) ? [] : currentButtons)) }
   private func devicePoint(for event: NSEvent) -> (Int32, Int32)? {
     guard deviceDimensions.width > 0, deviceDimensions.height > 0 else { return nil }
     let p = convert(event.locationInWindow, from: nil); let vw = bounds.width; let vh = bounds.height; guard vw > 0, vh > 0 else { return nil }
