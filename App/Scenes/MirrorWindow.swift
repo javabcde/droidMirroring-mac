@@ -128,6 +128,17 @@ final class MirrorWindowController: NSWindowController {
     window.center()
     super.init(window: window)
 
+    // Persist window frame on close so the user's preferred mirror size
+    // survives app restarts.  We also save in close() as a safety net,
+    // but the notification catches user-initiated closes.
+    NotificationCenter.default.addObserver(
+      forName: NSWindow.willCloseNotification,
+      object: window,
+      queue: .main
+    ) { [weak self] _ in
+      self?.saveWindowFrame()
+    }
+
     // Custom HUD-style overlay bar in the chrome strip above the bezel.
     // Floats next to (not over) the device content.
     let overlay = MirrorOverlayBar(
@@ -208,6 +219,7 @@ final class MirrorWindowController: NSWindowController {
       }
       await session.stop()
     }
+    saveWindowFrame()
     super.close()
   }
 
@@ -615,6 +627,41 @@ final class MirrorWindowController: NSWindowController {
     }
   }
 
+  // MARK: window frame persistence
+
+  /// Persist the current window frame so the user's preferred mirror size
+  /// survives app restarts.
+  private func saveWindowFrame() {
+    guard let serial = deviceSerial, let frame = window?.frame else { return }
+    let key = "mirror.windowFrame.\(serial)"
+    let dict: [String: CGFloat] = [
+      "x": frame.origin.x,
+      "y": frame.origin.y,
+      "width": frame.size.width,
+      "height": frame.size.height,
+    ]
+    UserDefaults.standard.set(dict, forKey: key)
+  }
+
+  /// Restore a previously-saved window frame, if any. Skips restoration
+  /// when the saved frame is entirely off-screen (e.g. external display
+  /// disconnected between sessions).
+  private func restoreWindowFrame() {
+    guard let serial = deviceSerial,
+          let dict = UserDefaults.standard.dictionary(forKey: "mirror.windowFrame.\(serial)") as? [String: CGFloat],
+          let x = dict["x"],
+          let y = dict["y"],
+          let w = dict["width"],
+          let h = dict["height"],
+          let window = self.window
+    else { return }
+    let savedFrame = NSRect(x: x, y: y, width: w, height: h)
+    let visible = NSScreen.screens.contains { $0.visibleFrame.intersects(savedFrame) }
+    guard visible else { return }
+    window.setFrame(savedFrame, display: true)
+    window.invalidateShadow()
+  }
+
   // MARK: window adapt
 
   private func applyDimensions(_ size: CGSize) {
@@ -632,6 +679,7 @@ final class MirrorWindowController: NSWindowController {
     if !hasSetInitialFrame {
       hasSetInitialFrame = true
       setInitialFrame(deviceSize: size, window: window)
+      restoreWindowFrame()
       return
     }
     guard changed else { return }
