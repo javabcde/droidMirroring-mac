@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Carbon.HIToolbox
+import ScrcpyClient
 
 // MARK: - HID keyboard descriptor
 
@@ -14,7 +15,6 @@ enum HIDKeyboard {
     0xC0
   ])
 
-  /// macOS kVK → USB HID keycode
   static func hidKeycode(macKeyCode: UInt16) -> UInt8? {
     switch Int(macKeyCode) {
     case kVK_ANSI_A: return 0x04; case kVK_ANSI_B: return 0x05; case kVK_ANSI_C: return 0x06; case kVK_ANSI_D: return 0x07
@@ -41,49 +41,25 @@ enum HIDKeyboard {
     case kVK_ForwardDelete: return 0x4C
     case kVK_RightArrow: return 0x4F; case kVK_LeftArrow: return 0x50
     case kVK_DownArrow: return 0x51; case kVK_UpArrow: return 0x52
-    case kVK_ANSI_Keypad0: return 0x62; case kVK_ANSI_Keypad1: return 0x59; case kVK_ANSI_Keypad2: return 0x5A
-    case kVK_ANSI_Keypad3: return 0x5B; case kVK_ANSI_Keypad4: return 0x5C; case kVK_ANSI_Keypad5: return 0x5D
-    case kVK_ANSI_Keypad6: return 0x5E; case kVK_ANSI_Keypad7: return 0x5F; case kVK_ANSI_Keypad8: return 0x60
-    case kVK_ANSI_Keypad9: return 0x61
-    case kVK_ANSI_KeypadDecimal: return 0x63; case kVK_ANSI_KeypadMultiply: return 0x55
-    case kVK_ANSI_KeypadPlus: return 0x57; case kVK_ANSI_KeypadMinus: return 0x56
-    case kVK_ANSI_KeypadDivide: return 0x54; case kVK_ANSI_KeypadEnter: return 0x58
-    case kVK_ANSI_KeypadEquals: return 0x67; case kVK_ANSI_KeypadClear: return 0x53
     default: return nil
     }
   }
 
-  /// ASCII character → HID keycode
   static func hidKeycode(ascii char: Character) -> UInt8? {
     guard let ascii = char.asciiValue else { return nil }
     switch ascii {
-    case 0x61...0x7A: return ascii - 0x61 + 0x04  // a-z
-    case 0x41...0x5A: return ascii - 0x41 + 0x04  // A-Z (same key, shift is in modifier)
-    case 0x31...0x39: return ascii - 0x31 + 0x1E  // 1-9
-    case 0x30: return 0x27  // 0
-    case 0x20: return 0x2C  // space
-    case 0x0A, 0x0D: return 0x28 // enter
-    case 0x09: return 0x2B  // tab
-    case 0x2D: return 0x2D  // -
-    case 0x3D: return 0x2E  // =
-    case 0x5B: return 0x2F  // [
-    case 0x5D: return 0x30  // ]
-    case 0x5C: return 0x31  // backslash
-    case 0x3B: return 0x33  // ;
-    case 0x27: return 0x34  // '
-    case 0x60: return 0x35  // `
-    case 0x2C: return 0x36  // ,
-    case 0x2E: return 0x37  // .
-    case 0x2F: return 0x38  // /
+    case 0x61...0x7A: return ascii - 0x61 + 0x04
+    case 0x41...0x5A: return ascii - 0x41 + 0x04
+    case 0x31...0x39: return ascii - 0x31 + 0x1E
+    case 0x30: return 0x27; case 0x20: return 0x2C; case 0x0A, 0x0D: return 0x28; case 0x09: return 0x2B
+    case 0x2D: return 0x2D; case 0x3D: return 0x2E; case 0x5B: return 0x2F; case 0x5D: return 0x30
+    case 0x5C: return 0x31; case 0x3B: return 0x33; case 0x27: return 0x34; case 0x60: return 0x35
+    case 0x2C: return 0x36; case 0x2E: return 0x37; case 0x2F: return 0x38
     default: return nil
     }
   }
 
-  static func makeReport(modifiers: UInt8, keycodes: [UInt8]) -> Data {
-    var rpt = Data(count: 8); rpt[0] = modifiers
-    for i in 0..<min(keycodes.count, 6) { rpt[2 + i] = keycodes[i] }
-    return rpt
-  }
+  static func makeReport(modifiers: UInt8, keycodes: [UInt8]) -> Data { var rpt = Data(count: 8); rpt[0] = modifiers; for i in 0..<min(keycodes.count, 6) { rpt[2 + i] = keycodes[i] }; return rpt }
 }
 
 // MARK: - UHID Keyboard Manager
@@ -91,45 +67,14 @@ enum HIDKeyboard {
 @MainActor
 final class UHIDKeyboardManager {
   typealias Sink = (ControlMessage) -> Void
-
-  private let sink: Sink
-  private let deviceId: UInt16 = 42
-  private var pressedKeys: [UInt8] = []
-  private var activeModifiers: UInt8 = 0
-  private var created = false
-
+  private let sink: Sink; private let deviceId: UInt16 = 42; private var pressedKeys: [UInt8] = []; private var activeModifiers: UInt8 = 0; private var created = false
   init(sink: @escaping Sink) { self.sink = sink }
-
   func create() { guard !created else { return }; created = true; sink(.uhidCreate(id: deviceId, descriptor: HIDKeyboard.descriptor)) }
   func destroy() { sink(.uhidDestroy(id: deviceId)) }
-
-  /// Send a single HID key press+release (for programmatic text injection)
-  func sendKey(_ keycode: UInt8) {
-    var rpt = Data(count: 8); rpt[0] = activeModifiers; rpt[2] = keycode; sink(.uhidInput(id: deviceId, data: rpt))
-    rpt[2] = 0; sink(.uhidInput(id: deviceId, data: rpt))
-  }
-
-  @discardableResult func handleKeyDown(with event: NSEvent) -> Bool {
-    guard let hid = HIDKeyboard.hidKeycode(macKeyCode: event.keyCode) else { return false }
-    if !pressedKeys.contains(hid) { pressedKeys.append(hid) }
-    syncModifiers(event); flush(); return true
-  }
-
-  @discardableResult func handleKeyUp(with event: NSEvent) -> Bool {
-    guard let hid = HIDKeyboard.hidKeycode(macKeyCode: event.keyCode) else { return false }
-    pressedKeys.removeAll { $0 == hid }; syncModifiers(event); flush(); return true
-  }
-
+  func sendKey(_ keycode: UInt8) { var rpt = Data(count: 8); rpt[0] = activeModifiers; rpt[2] = keycode; sink(.uhidInput(id: deviceId, data: rpt)); rpt[2] = 0; sink(.uhidInput(id: deviceId, data: rpt)) }
+  @discardableResult func handleKeyDown(with event: NSEvent) -> Bool { guard let hid = HIDKeyboard.hidKeycode(macKeyCode: event.keyCode) else { return false }; if !pressedKeys.contains(hid) { pressedKeys.append(hid) }; syncModifiers(event); flush(); return true }
+  @discardableResult func handleKeyUp(with event: NSEvent) -> Bool { guard let hid = HIDKeyboard.hidKeycode(macKeyCode: event.keyCode) else { return false }; pressedKeys.removeAll { $0 == hid }; syncModifiers(event); flush(); return true }
   func handleFlagsChanged(with event: NSEvent) { syncModifiers(event); flush() }
-
-  private func syncModifiers(_ event: NSEvent) {
-    var m: UInt8 = 0; let f = event.modifierFlags
-    if f.contains(.control) { m |= 0x01 }; if f.contains(.shift) { m |= 0x02 }
-    if f.contains(.option)  { m |= 0x04 }; if f.contains(.command) { m |= 0x08 }
-    activeModifiers = m
-  }
-
-  private func flush() {
-    sink(.uhidInput(id: deviceId, data: HIDKeyboard.makeReport(modifiers: activeModifiers, keycodes: pressedKeys)))
-  }
+  private func syncModifiers(_ event: NSEvent) { var m: UInt8 = 0; let f = event.modifierFlags; if f.contains(.control) { m |= 0x01 }; if f.contains(.shift) { m |= 0x02 }; if f.contains(.option) { m |= 0x04 }; if f.contains(.command) { m |= 0x08 }; activeModifiers = m }
+  private func flush() { sink(.uhidInput(id: deviceId, data: HIDKeyboard.makeReport(modifiers: activeModifiers, keycodes: pressedKeys))) }
 }
