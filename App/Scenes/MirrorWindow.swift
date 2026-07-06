@@ -63,7 +63,11 @@ final class MirrorWindowController: NSWindowController {
       if let reader { let bridge = ClipboardBridge(writer: writer, reader: reader); bridge.enabled = clipboardOn; bridge.start(); self.clipboardBridge = bridge }
       self.applyDimensions(initialSize); self.window?.toolbar?.validateVisibleItems()
     }
-    if !isRestarting, autoScreenOff { try? await writer.send(.setScreenPowerMode(0)); await MainActor.run { self.isScreenOff = true } }; startScreenStatePoller()
+    if !isRestarting, autoScreenOff {
+      let alreadyOff = await queryDeviceScreenOff(serial: deviceSerial ?? "")
+      if alreadyOff { try? await writer.send(.setScreenPowerMode(2)); await MainActor.run { self.isScreenOff = false } }
+      else { try? await writer.send(.setScreenPowerMode(0)); await MainActor.run { self.isScreenOff = true } }
+    }; startScreenStatePoller()
     if !isRestarting { await MainActor.run { self.applyAudioOutput(self.audioOutput) } }; isRestarting = false
     // UHID keyboard — create after control channel is fully settled
     try? await Task.sleep(nanoseconds: 300_000_000)
