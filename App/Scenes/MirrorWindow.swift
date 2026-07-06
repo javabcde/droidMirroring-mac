@@ -690,8 +690,9 @@ final class MirrorWindowController: NSWindowController {
 
     if !hasSetInitialFrame {
       hasSetInitialFrame = true
-      setInitialFrame(deviceSize: size, window: window)
-      restoreWindowFrame()
+      if !restoreWindowFrame() {
+        setInitialFrame(deviceSize: size, window: window)
+      }
       return
     }
     guard changed else { return }
@@ -740,15 +741,17 @@ final class MirrorWindowController: NSWindowController {
     UserDefaults.standard.set(["x": f.origin.x, "y": f.origin.y, "width": f.size.width, "height": f.size.height], forKey: "mirror.windowFrame.\(s)")
   }
 
-  private func restoreWindowFrame() {
+  @discardableResult
+  private func restoreWindowFrame() -> Bool {
     guard let s = deviceSerial,
           let d = UserDefaults.standard.dictionary(forKey: "mirror.windowFrame.\(s)") as? [String: CGFloat],
           let x = d["x"], let y = d["y"], let w = d["width"], let h = d["height"],
-          let win = self.window else { return }
+          let win = self.window else { return false }
     let f = NSRect(x: x, y: y, width: w, height: h)
-    guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(f) }) else { return }
+    guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(f) }) else { return false }
     win.setFrame(f, display: true)
     win.invalidateShadow()
+    return true
   }
 
   private func aspectRatio(for deviceSize: CGSize) -> NSSize {
