@@ -25,7 +25,7 @@ public struct ScrcpyOptions: Sendable {
 
   public init(
     videoBitRate: Int = 4_000_000,
-    maxFps: Int = 30,
+    maxFps: Int = 60,
     videoCodec: String = "h265",
     audioCodec: String = "opus",
     audioEnabled: Bool = true,
