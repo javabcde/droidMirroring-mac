@@ -37,16 +37,19 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func updateTrackingAreas() { super.updateTrackingAreas(); if let e = trackingArea { removeTrackingArea(e) }; let a = NSTrackingArea(rect: bounds, options: [.activeInKeyWindow, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect], owner: self, userInfo: nil); addTrackingArea(a); trackingArea = a }
   override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); window?.makeFirstResponder(self) }
 
-  private var dragStartDevice: (Int32, Int32)?; private var dragMoved = false
-  override func mouseDown(with e: NSEvent) { currentButtons.insert(.primary); dragMoved = false; if let pt = devicePoint(for: e) { dragStartDevice = pt }; sendTouch(.down, event: e) }
+  private var dragStartDevice: (Int32, Int32)?; private var dragMoved = false; private var dragStartTimestamp: TimeInterval = 0
+  override func mouseDown(with e: NSEvent) { currentButtons.insert(.primary); dragMoved = false; if let pt = devicePoint(for: e) { dragStartDevice = pt }; dragStartTimestamp = e.timestamp; sendTouch(.down, event: e) }
   override func mouseDragged(with e: NSEvent) { dragMoved = true; sendTouch(.move, event: e) }
   override func mouseUp(with e: NSEvent) {
     if dragMoved, let start = dragStartDevice, let cur = devicePoint(for: e) {
       let dy = (cur.1 - start.1) * 3; let dx = (cur.0 - start.0) * 3
       let moved = abs(cur.1 - start.1) + abs(cur.0 - start.0)
-      if moved > 8 && (dy != 0 || dx != 0) {
+      let elapsed = max(0.001, e.timestamp - dragStartTimestamp)
+      if moved > 8 && (abs(dy) > 2 || abs(dx) > 2) {
         let h = Int32(deviceDimensions.height); let w = Int32(deviceDimensions.width)
-        sendTouchAt(.move, x: max(0, min(w - 1, cur.0 + dx)), y: max(0, min(h - 1, cur.1 + dy)))
+        let steps = max(3, min(12, Int(moved / 20)))
+        let endX = max(0, min(w - 1, cur.0 + dx)); let endY = max(0, min(h - 1, cur.1 + dy))
+        for i in 1...steps { let t = Double(i) / Double(steps); let ix = Int32(Double(cur.0) + Double(endX - cur.0) * t); let iy = Int32(Double(cur.1) + Double(endY - cur.1) * t); sendTouchAt(.move, x: ix, y: iy) }
       }
     }
     sendTouch(.up, event: e); currentButtons.remove(.primary); dragStartDevice = nil; dragMoved = false
