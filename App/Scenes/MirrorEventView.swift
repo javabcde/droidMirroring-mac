@@ -58,18 +58,32 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func rightMouseDown(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
-  private var scrollOrigin: (Int32, Int32)?
+  private var scrollOrigin: (Int32, Int32)?; private var hScrollActive = false; private var hScrollStartX: Int32 = 0; private var hScrollLastX: Int32 = 0
   override func scrollWheel(with event: NSEvent) {
     guard let (x, y) = devicePoint(for: event) else { return }
+    let hasH = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
+    if hasH {
+      if event.phase == .began { hScrollActive = true; hScrollStartX = x; hScrollLastX = x }
+      if hScrollActive {
+        let deltaPts = event.scrollingDeltaX
+        let scaled = Int32(deltaPts * Double(deviceDimensions.width) / max(1, bounds.width) * 1.5)
+        let targetX = hScrollLastX - scaled
+        let clampedX = max(0, min(Int32(deviceDimensions.width) - 1, targetX))
+        if event.phase == .began { sendTouchAt(.down, x: hScrollLastX, y: y) }
+        if clampedX != hScrollLastX { sendTouchAt(.move, x: clampedX, y: y); hScrollLastX = clampedX }
+        if event.phase == .ended || event.phase == .cancelled { sendTouchAt(.up, x: clampedX, y: y); hScrollActive = false }
+      }
+      return
+    }
     if event.phase == .began || (scrollOrigin == nil && event.momentumPhase == .began) { scrollOrigin = (x, y) }
     let d: Double
     if event.hasPreciseScrollingDeltas { d = event.modifierFlags.contains(.option) ? 1500.0 : 800.0 }
     else { d = 10.0 }
     var dx = -event.scrollingDeltaX / d; var dy = event.scrollingDeltaY / d
     dx = max(-0.05, min(0.05, dx)); dy = max(-0.05, min(0.05, dy))
-    if abs(dx) > 0.0001 || abs(dy) > 0.0001 {
+    if abs(dy) > 0.0001 {
       let o = scrollOrigin ?? (x, y)
-      controlSink?(.scroll(x: o.0, y: o.1, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: dx, vscroll: dy, buttons: currentButtons))
+      controlSink?(.scroll(x: o.0, y: o.1, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: 0, vscroll: dy, buttons: currentButtons))
     }
     if event.phase == .ended || event.phase == .cancelled || event.momentumPhase == .ended { scrollOrigin = nil }
   }
