@@ -58,22 +58,22 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func rightMouseDown(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .down)) }
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
-  private var scrollOrigin: (Int32, Int32)?; private var hScrollActive = false; private var hScrollLastX: Int32 = 0; private var hScrollVel: Double = 0
+  private var scrollOrigin: (Int32, Int32)?; private var hScrollActive = false; private var hScrollLastX: Int32 = 0; private var hScrollTotal: Int32 = 0; private var hScrollMax: Double = 0
   override func scrollWheel(with event: NSEvent) {
     guard let (x, y) = devicePoint(for: event) else { return }
     let hasH = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
     if hasH {
-      if event.phase == .began { hScrollActive = true; hScrollLastX = x; hScrollVel = 0 }
+      if event.phase == .began { hScrollActive = true; hScrollLastX = x; hScrollTotal = 0; hScrollMax = 0 }
       if hScrollActive {
         let scaled = Int32(event.scrollingDeltaX * Double(deviceDimensions.width) / max(1, bounds.width) * 4.0)
         hScrollLastX = max(0, min(Int32(deviceDimensions.width) - 1, hScrollLastX + scaled))
-        hScrollVel = Double(scaled)
+        hScrollTotal += scaled; hScrollMax = max(hScrollMax, abs(Double(scaled)))
         if event.phase == .began { sendTouchAt(.down, x: x, y: y) }
         sendTouchAt(.move, x: hScrollLastX, y: y)
         if event.phase == .ended || event.phase == .cancelled {
-          let flingSteps = min(15, max(5, Int(abs(hScrollVel) / 3)))
-          let flingDir = hScrollVel > 0 ? 1.0 : -1.0
-          let flingDist = Int32(flingDir * min(Double(deviceDimensions.width) * 0.5, abs(hScrollVel) * Double(flingSteps) * 1.5))
+          let flingDir: Double = hScrollTotal > 0 ? 1.0 : (hScrollTotal < 0 ? -1.0 : 0)
+          let flingDist = Int32(flingDir * min(Double(deviceDimensions.width) * 0.4, hScrollMax * 20))
+          let flingSteps = max(5, min(15, Int(abs(flingDist) / 20)))
           for i in 1...flingSteps { let t = Double(i) / Double(flingSteps); let fx = max(0, min(Int32(deviceDimensions.width) - 1, hScrollLastX + Int32(Double(flingDist) * t))); sendTouchAt(.move, x: fx, y: y) }
           sendTouchAt(.up, x: max(0, min(Int32(deviceDimensions.width) - 1, hScrollLastX + flingDist)), y: y); hScrollActive = false
         }
