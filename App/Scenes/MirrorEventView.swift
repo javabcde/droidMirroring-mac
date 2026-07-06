@@ -59,6 +59,10 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func rightMouseUp(with e: NSEvent) { controlSink?(.backOrScreenOn(action: .up)) }
 
   private var scrollOrigin: (Int32, Int32)?
+  private var hScrollPrimed = false
+  private var hScrollPrimeX: Int32 = 0
+  private var hScrollPrimeY: Int32 = 0
+  private var hScrollPrimeTotal: Int32 = 0
   private var hScrollActive = false
   private var hScrollStartX: Int32 = 0
   private var hScrollLastX: Int32 = 0
@@ -76,8 +80,33 @@ final class MirrorEventView: NSView, NSTextInputClient {
       let deltaSign: Int32 = scaled > 0 ? 1 : (scaled < 0 ? -1 : 0)
       let activationThreshold = max(12, Int32(Double(width) * 0.015))
       if !hScrollActive {
-        if !event.momentumPhase.isEmpty || abs(scaled) < activationThreshold { return }
-        beginHorizontalScroll(atX: x, y: y)
+        if !event.momentumPhase.isEmpty { resetHorizontalScrollState(); return }
+        if !hScrollPrimed {
+          hScrollPrimed = true
+          hScrollPrimeX = x
+          hScrollPrimeY = y
+          hScrollPrimeTotal = 0
+          hScrollLatchedDirection = 0
+        }
+        hScrollPrimeTotal += scaled
+        let latchDistance = max(6, Int32(Double(width) * 0.01))
+        if hScrollLatchedDirection == 0 && abs(hScrollPrimeTotal) >= latchDistance { hScrollLatchedDirection = hScrollPrimeTotal > 0 ? 1 : -1 }
+        if event.phase == .ended || event.phase == .cancelled {
+          resetHorizontalScrollState()
+          return
+        }
+        if abs(hScrollPrimeTotal) < activationThreshold {
+          scheduleHorizontalScrollEnd()
+          return
+        }
+        let primeTotal = hScrollPrimeTotal
+        beginHorizontalScroll(atX: hScrollPrimeX, y: hScrollPrimeY)
+        hScrollLatchedDirection = primeTotal > 0 ? 1 : -1
+        hScrollLastX = max(0, min(width - 1, hScrollStartX + primeTotal))
+        hScrollTotal = hScrollLastX - hScrollStartX
+        sendTouchAt(.move, x: hScrollLastX, y: hScrollAnchorY)
+        scheduleHorizontalScrollEnd()
+        return
       }
       cancelHorizontalReleaseWorkItems()
       hScrollEndWorkItem?.cancel()
@@ -109,6 +138,10 @@ final class MirrorEventView: NSView, NSTextInputClient {
   private func beginHorizontalScroll(atX x: Int32, y: Int32) {
     cancelHorizontalReleaseWorkItems()
     hScrollEndWorkItem?.cancel()
+    hScrollPrimed = false
+    hScrollPrimeX = 0
+    hScrollPrimeY = 0
+    hScrollPrimeTotal = 0
     hScrollActive = true
     hScrollStartX = x
     hScrollLastX = x
@@ -120,7 +153,11 @@ final class MirrorEventView: NSView, NSTextInputClient {
 
   private func scheduleHorizontalScrollEnd() {
     hScrollEndWorkItem?.cancel()
-    let workItem = DispatchWorkItem { [weak self] in self?.finishHorizontalScroll() }
+    let workItem = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      if self.hScrollActive { self.finishHorizontalScroll() }
+      else { self.resetHorizontalScrollState() }
+    }
     hScrollEndWorkItem = workItem
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.025, execute: workItem)
   }
@@ -131,6 +168,10 @@ final class MirrorEventView: NSView, NSTextInputClient {
   }
 
   private func resetHorizontalScrollState() {
+    hScrollPrimed = false
+    hScrollPrimeX = 0
+    hScrollPrimeY = 0
+    hScrollPrimeTotal = 0
     hScrollActive = false
     hScrollStartX = 0
     hScrollLastX = 0
