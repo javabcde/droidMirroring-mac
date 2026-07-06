@@ -66,7 +66,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
     if event.hasPreciseScrollingDeltas { d = event.modifierFlags.contains(.option) ? 1500.0 : 800.0 }
     else { d = 10.0 }
     var dx = -event.scrollingDeltaX / d; var dy = event.scrollingDeltaY / d
-    dx = max(-0.15, min(0.15, dx)); dy = max(-0.15, min(0.15, dy))
+    dx = max(-0.05, min(0.05, dx)); dy = max(-0.05, min(0.05, dy))
     if abs(dx) > 0.0001 || abs(dy) > 0.0001 {
       let o = scrollOrigin ?? (x, y)
       controlSink?(.scroll(x: o.0, y: o.1, screenWidth: UInt16(deviceDimensions.width), screenHeight: UInt16(deviceDimensions.height), hscroll: dx, vscroll: dy, buttons: currentButtons))
