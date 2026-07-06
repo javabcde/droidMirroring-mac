@@ -71,13 +71,17 @@ final class MirrorEventView: NSView, NSTextInputClient {
     guard let (x, y) = devicePoint(for: event) else { return }
     let hasH = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
     if hasH {
-      if !hScrollActive { beginHorizontalScroll(atX: x, y: y) }
-      cancelHorizontalReleaseWorkItems()
-      hScrollEndWorkItem?.cancel()
-      if !event.momentumPhase.isEmpty { scheduleHorizontalScrollEnd(); return }
       let width = Int32(deviceDimensions.width)
       let scaled = Int32(event.scrollingDeltaX * Double(deviceDimensions.width) / max(1, bounds.width) * 4.0)
       let deltaSign: Int32 = scaled > 0 ? 1 : (scaled < 0 ? -1 : 0)
+      let activationThreshold = max(12, Int32(Double(width) * 0.015))
+      if !hScrollActive {
+        if !event.momentumPhase.isEmpty || abs(scaled) < activationThreshold { return }
+        beginHorizontalScroll(atX: x, y: y)
+      }
+      cancelHorizontalReleaseWorkItems()
+      hScrollEndWorkItem?.cancel()
+      if !event.momentumPhase.isEmpty { scheduleHorizontalScrollEnd(); return }
       let latchDistance = max(6, Int32(Double(width) * 0.01))
       if hScrollLatchedDirection == 0 && abs(scaled) >= latchDistance { hScrollLatchedDirection = deltaSign }
       if hScrollLatchedDirection != 0 && deltaSign != 0 && deltaSign != hScrollLatchedDirection { scheduleHorizontalScrollEnd(); return }
