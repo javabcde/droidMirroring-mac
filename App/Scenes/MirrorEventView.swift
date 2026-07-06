@@ -64,6 +64,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
   private var hScrollLastX: Int32 = 0
   private var hScrollAnchorY: Int32 = 0
   private var hScrollTotal: Int32 = 0
+  private var hScrollLatchedDirection: Int32 = 0
   private var hScrollEndWorkItem: DispatchWorkItem?
   private var hScrollReleaseWorkItems: [DispatchWorkItem] = []
   override func scrollWheel(with event: NSEvent) {
@@ -73,10 +74,16 @@ final class MirrorEventView: NSView, NSTextInputClient {
       if !hScrollActive { beginHorizontalScroll(atX: x, y: y) }
       cancelHorizontalReleaseWorkItems()
       hScrollEndWorkItem?.cancel()
+      if !event.momentumPhase.isEmpty { scheduleHorizontalScrollEnd(); return }
       let width = Int32(deviceDimensions.width)
       let scaled = Int32(event.scrollingDeltaX * Double(deviceDimensions.width) / max(1, bounds.width) * 4.0)
+      let deltaSign: Int32 = scaled > 0 ? 1 : (scaled < 0 ? -1 : 0)
+      let latchDistance = max(6, Int32(Double(width) * 0.01))
+      if hScrollLatchedDirection == 0 && abs(scaled) >= latchDistance { hScrollLatchedDirection = deltaSign }
+      if hScrollLatchedDirection != 0 && deltaSign != 0 && deltaSign != hScrollLatchedDirection { scheduleHorizontalScrollEnd(); return }
       hScrollLastX = max(0, min(width - 1, hScrollLastX + scaled))
       hScrollTotal = hScrollLastX - hScrollStartX
+      if hScrollLatchedDirection == 0 && abs(hScrollTotal) >= latchDistance { hScrollLatchedDirection = hScrollTotal > 0 ? 1 : -1 }
       sendTouchAt(.move, x: hScrollLastX, y: hScrollAnchorY)
       if event.phase == .ended || event.phase == .cancelled { finishHorizontalScroll() }
       else { scheduleHorizontalScrollEnd() }
@@ -103,6 +110,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
     hScrollLastX = x
     hScrollAnchorY = y
     hScrollTotal = 0
+    hScrollLatchedDirection = 0
     sendTouchAt(.down, x: x, y: y)
   }
 
@@ -124,6 +132,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
     hScrollLastX = 0
     hScrollAnchorY = 0
     hScrollTotal = 0
+    hScrollLatchedDirection = 0
   }
 
   private func finishHorizontalScroll() {
@@ -136,7 +145,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
       var finalX = hScrollLastX
       if abs(hScrollTotal) >= commitThreshold {
         let settleDistance = Int32(Double(width) * 0.24)
-        let direction: Int32 = hScrollTotal > 0 ? 1 : -1
+        let direction: Int32 = hScrollLatchedDirection != 0 ? hScrollLatchedDirection : (hScrollTotal > 0 ? 1 : -1)
         let targetX = max(0, min(width - 1, hScrollLastX + direction * settleDistance))
         let steps = 6
         if targetX != hScrollLastX {
