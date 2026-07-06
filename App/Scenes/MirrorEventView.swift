@@ -72,8 +72,9 @@ final class MirrorEventView: NSView, NSTextInputClient {
         sendTouchAt(.move, x: hScrollLastX, y: y)
         if event.phase == .ended || event.phase == .cancelled {
           let flingDir: Double = hScrollTotal > 0 ? 1.0 : (hScrollTotal < 0 ? -1.0 : 0)
-          let flingDist = Int32(flingDir * min(Double(deviceDimensions.width) * 0.4, hScrollMax * 20))
-          let flingSteps = max(5, min(15, Int(abs(flingDist) / 20)))
+          let baseDist = Double(deviceDimensions.width) * 0.35
+          let flingDist = Int32(flingDir * max(baseDist, hScrollMax * 25))
+          let flingSteps = max(8, min(20, Int(abs(flingDist) / 15)))
           for i in 1...flingSteps { let t = Double(i) / Double(flingSteps); let fx = max(0, min(Int32(deviceDimensions.width) - 1, hScrollLastX + Int32(Double(flingDist) * t))); sendTouchAt(.move, x: fx, y: y) }
           sendTouchAt(.up, x: max(0, min(Int32(deviceDimensions.width) - 1, hScrollLastX + flingDist)), y: y); hScrollActive = false
         }
