@@ -132,10 +132,10 @@ final class MirrorEventView: NSView, NSTextInputClient {
     cancelHorizontalReleaseWorkItems()
     let width = Int32(deviceDimensions.width)
     if width > 0 {
-      let commitThreshold = Int32(Double(width) * 0.22)
+      let commitThreshold = Int32(Double(width) * 0.18)
       var finalX = hScrollLastX
       if abs(hScrollTotal) >= commitThreshold {
-        let settleDistance = Int32(Double(width) * 0.18)
+        let settleDistance = Int32(Double(width) * 0.24)
         let direction: Int32 = hScrollTotal > 0 ? 1 : -1
         let targetX = max(0, min(width - 1, hScrollLastX + direction * settleDistance))
         let steps = 6
