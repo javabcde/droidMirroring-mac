@@ -78,7 +78,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
       let width = Int32(deviceDimensions.width)
       let scaled = Int32(event.scrollingDeltaX * Double(deviceDimensions.width) / max(1, bounds.width) * 4.0)
       let deltaSign: Int32 = scaled > 0 ? 1 : (scaled < 0 ? -1 : 0)
-      let activationThreshold = max(12, Int32(Double(width) * 0.015))
+      let activationThreshold = max(6, Int32(Double(width) * 0.008))
       if !hScrollActive {
         if !event.momentumPhase.isEmpty { resetHorizontalScrollState(); return }
         if !hScrollPrimed {
