@@ -131,6 +131,8 @@ final class MirrorWindowController: NSWindowController {
     window.center()
     super.init(window: window)
 
+    NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in self?.saveWindowFrame() }
+
     // Custom HUD-style overlay bar in the chrome strip above the bezel.
     // Floats next to (not over) the device content.
     let overlay = MirrorOverlayBar(
@@ -689,6 +691,7 @@ final class MirrorWindowController: NSWindowController {
     if !hasSetInitialFrame {
       hasSetInitialFrame = true
       setInitialFrame(deviceSize: size, window: window)
+      restoreWindowFrame()
       return
     }
     guard changed else { return }
@@ -730,6 +733,22 @@ final class MirrorWindowController: NSWindowController {
       y: screenVisible.midY - frame.height / 2
     )
     window.setFrame(positioned, display: true)
+  }
+
+  private func saveWindowFrame() {
+    guard let s = deviceSerial, let f = window?.frame else { return }
+    UserDefaults.standard.set(["x": f.origin.x, "y": f.origin.y, "width": f.size.width, "height": f.size.height], forKey: "mirror.windowFrame.\(s)")
+  }
+
+  private func restoreWindowFrame() {
+    guard let s = deviceSerial,
+          let d = UserDefaults.standard.dictionary(forKey: "mirror.windowFrame.\(s)") as? [String: CGFloat],
+          let x = d["x"], let y = d["y"], let w = d["width"], let h = d["height"],
+          let win = self.window else { return }
+    let f = NSRect(x: x, y: y, width: w, height: h)
+    guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(f) }) else { return }
+    win.setFrame(f, display: true)
+    win.invalidateShadow()
   }
 
   private func aspectRatio(for deviceSize: CGSize) -> NSSize {
