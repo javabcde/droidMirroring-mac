@@ -50,9 +50,16 @@ jobs:
             SWIFT_STRICT_CONCURRENCY=off \
             build
 
-      - name: Get version from tag
+      - name: Get version
         id: version
-        run: echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$(echo "${GITHUB_REF}" | sed 's|^refs/heads/||' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create DMG
         run: |

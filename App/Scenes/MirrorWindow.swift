@@ -45,6 +45,7 @@ final class MirrorWindowController: NSWindowController {
   private var chromeRevealed = false
   private var chromeHideTimer: Timer?
   private var mouseMonitor: Any?
+  private var uhidKeyboard: UHIDKeyboardManager?
   private static let bezelInset: CGFloat = 8
   private static let bezelCornerRadius: CGFloat = 34
   private static let innerCornerRadius: CGFloat = 26
@@ -130,6 +131,8 @@ final class MirrorWindowController: NSWindowController {
     window.center()
     super.init(window: window)
 
+    NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in self?.saveWindowFrame() }
+
     // Custom HUD-style overlay bar in the chrome strip above the bezel.
     // Floats next to (not over) the device content.
     let overlay = MirrorOverlayBar(
@@ -182,6 +185,7 @@ final class MirrorWindowController: NSWindowController {
   required init?(coder: NSCoder) { fatalError() }
 
   override func close() {
+    uhidKeyboard?.destroy(); uhidKeyboard = nil
     screenStatePoller?.invalidate()
     screenStatePoller = nil
     if let monitor = mouseMonitor {
@@ -271,6 +275,18 @@ final class MirrorWindowController: NSWindowController {
       await MainActor.run { self.applyAudioOutput(self.audioOutput) }
     }
     isRestarting = false
+
+    // Wake screen on reconnect if already off — prevents deep sleep from re-applying screen-off
+    if !isRestarting, autoScreenOff {
+      let alreadyOff = await queryDeviceScreenOff(serial: deviceSerial ?? "")
+      if alreadyOff { try? await writer.send(.setScreenPowerMode(2)); await MainActor.run { self.isScreenOff = false } }
+      else { try? await writer.send(.setScreenPowerMode(0)); await MainActor.run { self.isScreenOff = true } }
+    }
+
+    // UHID keyboard — create after control channel is fully settled
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    let km = UHIDKeyboardManager { [weak writer] msg in Task { try? await writer?.send(msg) } }
+    await MainActor.run { self.uhidKeyboard = km; self.eventView.uhidKeyboard = km; km.create() }
   }
 
   // MARK: actions (wired from MirrorOverlayBar / window menu / keyboard)
@@ -674,7 +690,9 @@ final class MirrorWindowController: NSWindowController {
 
     if !hasSetInitialFrame {
       hasSetInitialFrame = true
-      setInitialFrame(deviceSize: size, window: window)
+      if !restoreWindowFrame() {
+        setInitialFrame(deviceSize: size, window: window)
+      }
       return
     }
     guard changed else { return }
@@ -716,6 +734,24 @@ final class MirrorWindowController: NSWindowController {
       y: screenVisible.midY - frame.height / 2
     )
     window.setFrame(positioned, display: true)
+  }
+
+  private func saveWindowFrame() {
+    guard let s = deviceSerial, let f = window?.frame else { return }
+    UserDefaults.standard.set(["x": f.origin.x, "y": f.origin.y, "width": f.size.width, "height": f.size.height], forKey: "mirror.windowFrame.\(s)")
+  }
+
+  @discardableResult
+  private func restoreWindowFrame() -> Bool {
+    guard let s = deviceSerial,
+          let d = UserDefaults.standard.dictionary(forKey: "mirror.windowFrame.\(s)") as? [String: CGFloat],
+          let x = d["x"], let y = d["y"], let w = d["width"], let h = d["height"],
+          let win = self.window else { return false }
+    let f = NSRect(x: x, y: y, width: w, height: h)
+    guard NSScreen.screens.contains(where: { $0.visibleFrame.intersects(f) }) else { return false }
+    win.setFrame(f, display: true)
+    win.invalidateShadow()
+    return true
   }
 
   private func aspectRatio(for deviceSize: CGSize) -> NSSize {
