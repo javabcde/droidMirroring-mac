@@ -85,7 +85,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
       let latchDistance = max(6, Int32(Double(width) * 0.01))
       if hScrollLatchedDirection == 0 && abs(scaled) >= latchDistance { hScrollLatchedDirection = deltaSign }
       if hScrollLatchedDirection != 0 && deltaSign != 0 && deltaSign != hScrollLatchedDirection { scheduleHorizontalScrollEnd(); return }
-      hScrollLastX = max(0, min(width - 1, hScrollLastX + scaled))
+      hScrollLastX = max(0, min(width - 1, hScrollLastX - scaled))
       hScrollTotal = hScrollLastX - hScrollStartX
       if hScrollLatchedDirection == 0 && abs(hScrollTotal) >= latchDistance { hScrollLatchedDirection = hScrollTotal > 0 ? 1 : -1 }
       sendTouchAt(.move, x: hScrollLastX, y: hScrollAnchorY)
