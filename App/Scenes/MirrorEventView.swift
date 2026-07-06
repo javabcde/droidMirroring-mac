@@ -110,7 +110,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
     hScrollEndWorkItem?.cancel()
     let workItem = DispatchWorkItem { [weak self] in self?.finishHorizontalScroll() }
     hScrollEndWorkItem = workItem
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.025, execute: workItem)
   }
 
   private func cancelHorizontalReleaseWorkItems() {
