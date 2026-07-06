@@ -65,11 +65,13 @@ final class MirrorEventView: NSView, NSTextInputClient {
   private var hScrollAnchorY: Int32 = 0
   private var hScrollTotal: Int32 = 0
   private var hScrollEndWorkItem: DispatchWorkItem?
+  private var hScrollReleaseWorkItems: [DispatchWorkItem] = []
   override func scrollWheel(with event: NSEvent) {
     guard let (x, y) = devicePoint(for: event) else { return }
     let hasH = abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY)
     if hasH {
       if !hScrollActive { beginHorizontalScroll(atX: x, y: y) }
+      cancelHorizontalReleaseWorkItems()
       hScrollEndWorkItem?.cancel()
       let width = Int32(deviceDimensions.width)
       let scaled = Int32(event.scrollingDeltaX * Double(deviceDimensions.width) / max(1, bounds.width) * 4.0)
@@ -94,6 +96,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
   }
 
   private func beginHorizontalScroll(atX x: Int32, y: Int32) {
+    cancelHorizontalReleaseWorkItems()
     hScrollEndWorkItem?.cancel()
     hScrollActive = true
     hScrollStartX = x
@@ -110,34 +113,57 @@ final class MirrorEventView: NSView, NSTextInputClient {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: workItem)
   }
 
-  private func finishHorizontalScroll() {
-    guard hScrollActive else { return }
-    hScrollEndWorkItem?.cancel(); hScrollEndWorkItem = nil
-    let width = Int32(deviceDimensions.width)
-    if width > 0 {
-      let commitThreshold = Int32(Double(width) * 0.22)
-      if abs(hScrollTotal) >= commitThreshold {
-        let settleDistance = Int32(Double(width) * 0.20)
-        let direction: Int32 = hScrollTotal > 0 ? 1 : -1
-        let targetX = max(0, min(width - 1, hScrollLastX + direction * settleDistance))
-        let steps = 8
-        if targetX != hScrollLastX {
-          let startX = hScrollLastX
-          for i in 1...steps {
-            let t = Double(i) / Double(steps)
-            let fx = startX + Int32(Double(targetX - startX) * t)
-            sendTouchAt(.move, x: max(0, min(width - 1, fx)), y: hScrollAnchorY)
-          }
-          hScrollLastX = targetX
-        }
-      }
-      sendTouchAt(.up, x: hScrollLastX, y: hScrollAnchorY)
-    }
+  private func cancelHorizontalReleaseWorkItems() {
+    hScrollReleaseWorkItems.forEach { $0.cancel() }
+    hScrollReleaseWorkItems.removeAll()
+  }
+
+  private func resetHorizontalScrollState() {
     hScrollActive = false
     hScrollStartX = 0
     hScrollLastX = 0
     hScrollAnchorY = 0
     hScrollTotal = 0
+  }
+
+  private func finishHorizontalScroll() {
+    guard hScrollActive else { return }
+    hScrollEndWorkItem?.cancel(); hScrollEndWorkItem = nil
+    cancelHorizontalReleaseWorkItems()
+    let width = Int32(deviceDimensions.width)
+    if width > 0 {
+      let commitThreshold = Int32(Double(width) * 0.22)
+      var finalX = hScrollLastX
+      if abs(hScrollTotal) >= commitThreshold {
+        let settleDistance = Int32(Double(width) * 0.18)
+        let direction: Int32 = hScrollTotal > 0 ? 1 : -1
+        let targetX = max(0, min(width - 1, hScrollLastX + direction * settleDistance))
+        let steps = 6
+        if targetX != hScrollLastX {
+          let startX = hScrollLastX
+          for i in 1...steps {
+            let workItem = DispatchWorkItem { [weak self] in
+              guard let self else { return }
+              let t = Double(i) / Double(steps)
+              let eased = 1 - pow(1 - t, 3)
+              let fx = startX + Int32(Double(targetX - startX) * eased)
+              let clampedX = max(0, min(width - 1, fx))
+              self.sendTouchAt(.move, x: clampedX, y: self.hScrollAnchorY)
+              if i == steps {
+                self.sendTouchAt(.up, x: clampedX, y: self.hScrollAnchorY)
+                self.cancelHorizontalReleaseWorkItems()
+                self.resetHorizontalScrollState()
+              }
+            }
+            hScrollReleaseWorkItems.append(workItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.008 * Double(i), execute: workItem)
+          }
+          return
+        }
+      }
+      sendTouchAt(.up, x: finalX, y: hScrollAnchorY)
+    }
+    resetHorizontalScrollState()
   }
 
   private func sendTouch(_ action: TouchAction, event: NSEvent) { guard let (x, y) = devicePoint(for: event) else { return }; sendTouchAt(action, x: x, y: y) }
