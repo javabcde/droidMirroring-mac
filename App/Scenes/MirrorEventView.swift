@@ -62,7 +62,7 @@ final class MirrorEventView: NSView, NSTextInputClient {
   override func scrollWheel(with event: NSEvent) {
     guard let (x, y) = devicePoint(for: event) else { return }
     if event.phase == .began || (scrollOrigin == nil && event.momentumPhase == .began) { scrollOrigin = (x, y) }
-    let d = event.modifierFlags.contains(.option) ? 80.0 : 200.0
+    let d = event.modifierFlags.contains(.option) ? 1200.0 : 1000.0
     let dx = -event.scrollingDeltaX / d; let dy = event.scrollingDeltaY / d
     if abs(dx) > 0.0001 || abs(dy) > 0.0001 {
       let o = scrollOrigin ?? (x, y)
