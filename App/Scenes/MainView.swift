@@ -145,6 +145,7 @@ private struct ConnectedDevicesView: View {
 
 private struct ConnectedDeviceRow: View {
   let device: Device
+  @State private var showDisconnectConfirm = false
 
   var body: some View {
     HStack(spacing: 12) {
@@ -163,6 +164,23 @@ private struct ConnectedDeviceRow: View {
       }
       Button("Files") {
         SessionCoordinator.shared.openFiles(for: device)
+      }
+      if device.transport == .wifi {
+        Button {
+          showDisconnectConfirm = true
+        } label: {
+          Image(systemName: "eject.circle")
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .alert("Disconnect device?", isPresented: $showDisconnectConfirm) {
+          Button("Cancel", role: .cancel) {}
+          Button("Disconnect", role: .destructive) {
+            Task { await SessionCoordinator.shared.disconnectWirelessDevice(for: device) }
+          }
+        } message: {
+          Text("The device will be removed from this list. You can reconnect anytime from the Pairing window without entering a code again.")
+        }
       }
     }
     .padding(.horizontal, 10)

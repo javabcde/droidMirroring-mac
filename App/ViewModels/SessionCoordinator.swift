@@ -51,32 +51,21 @@ final class SessionCoordinator: ObservableObject {
   private let adb = ADBClient()
   private var mirrorWindows: [String: MirrorWindowController] = [:]
   private var filesWindows: [String: FilesWindowController] = [:]
-  /// One window per (deviceSerial, packageName).
   private var fusionWindows: [String: FusionAppWindowController] = [:]
-  /// Each device gets one FreeformActivator + its restoration token; we activate
-  /// lazily on first Fusion launch and deactivate when no more Fusion windows remain.
   private var freeformActivators: [String: FreeformActivator] = [:]
   private var freeformTokens: [String: ActivationToken] = [:]
-  /// Samsung foldables remap LogicalDisplay 0 to whichever panel is active,
-  /// so tracking the id alone misses fold/unfold transitions. We also remember
-  /// dims and rotation; bump scrcpy when any of them change.
   private var activePanel: [String: (id: Int, width: Int, height: Int, rotation: Int)] = [:]
   private var pollTasks: [String: Task<Void, Never>] = [:]
-
-  /// Serials we've already auto-opened in this app session. Cleared on quit.
-  /// Prevents re-opening Mirror when the user explicitly closed it.
   private var autoMirroredSerials: Set<String> = []
-
-  /// Phone-shaped "no device connected" placeholder shown when there's
-  /// nothing to mirror. Owned here so it can be opened/closed in lockstep
-  /// with the real Mirror windows.
   private var waitingController: WaitingMirrorWindowController?
 
-  /// True iff any Mirror / Files / Desktop window for any device is alive.
-  /// Used by the launch-time sweep so it doesn't pkill our own scrcpy-server.
-  var hasActiveSession: Bool {
-    !mirrorWindows.isEmpty || !fusionWindows.isEmpty
+  private var trustedKey = "mirror.trustedDeviceSerials"
+  private var trusted: Set<String> {
+    get { Set(UserDefaults.standard.stringArray(forKey: trustedKey) ?? []) }
+    set { UserDefaults.standard.set(Array(newValue), forKey: trustedKey) }
   }
+  func trustDevice(_ s: String) { var x = trusted; x.insert(s); trusted = x }
+  var hasActiveSession: Bool { !mirrorWindows.isEmpty || !fusionWindows.isEmpty }
 
   /// Called from the App on every DeviceMonitor publish. Opens Mirror for the
   /// first online device we haven't already auto-mirrored this session,
@@ -108,12 +97,14 @@ final class SessionCoordinator: ObservableObject {
 
     let autoEnabled = UserDefaults.standard.object(forKey: "mirror.autoOnConnect") as? Bool ?? true
     guard autoEnabled else { return }
+    let known = trusted
     for device in online {
       if mirrorWindows[device.id] != nil { continue }
       if autoMirroredSerials.contains(device.id) { continue }
+      if !known.contains(device.id) { continue }
       autoMirroredSerials.insert(device.id)
       Task { await startMirror(for: device) }
-      break    // one at a time; user can open more from the menubar
+      break
     }
   }
 
@@ -144,6 +135,7 @@ final class SessionCoordinator: ObservableObject {
   }
 
   func startMirror(for device: Device) async {
+    trustDevice(device.id)
     if let existing = mirrorWindows[device.id] {
       existing.window?.makeKeyAndOrderFront(nil)
       return
@@ -242,6 +234,7 @@ final class SessionCoordinator: ObservableObject {
   }
 
   func openFiles(for device: Device) {
+    trustDevice(device.id)
     if let existing = filesWindows[device.id] {
       existing.window?.makeKeyAndOrderFront(nil)
       return
@@ -269,11 +262,8 @@ final class SessionCoordinator: ObservableObject {
   /// Open a single Android desktop on a virtual display, no specific app forced.
   /// Used by the "Desktop Mode" button — the device shows whatever its launcher
   /// (Samsung DeX / Pixel / AOSP) puts on a secondary display.
-  func openDesktop(
-    for device: Device,
-    size: CGSize = CGSize(width: 2560, height: 1440),
-    dpi: Int = 160
-  ) async {
+  func openDesktop(for device: Device, size: CGSize = CGSize(width: 2560, height: 1440), dpi: Int = 160) async {
+    trustDevice(device.id)
     let pseudoApp = InstalledApp(packageName: "desktop", label: "Desktop", iconPNG: nil)
     let key = fusionKey(serial: device.id, packageName: pseudoApp.packageName)
     if let existing = fusionWindows[key] {
@@ -323,14 +313,8 @@ final class SessionCoordinator: ObservableObject {
   /// Launch one Android app into its own borderless window. Activates the
   /// device-wide freeform settings on first launch per-session; the snapshot
   /// is restored when the last Fusion window for that device closes.
-  func launchFusionApp(
-    for device: Device,
-    app: InstalledApp,
-    // DeX-style desktop: 1440p landscape at ~10" tablet density. Comfortable
-    // size for a Mac monitor, leaves room for several app windows within Android.
-    size: CGSize = CGSize(width: 2560, height: 1440),
-    dpi: Int = 160
-  ) async {
+  func launchFusionApp(for device: Device, app: InstalledApp, size: CGSize = CGSize(width: 2560, height: 1440), dpi: Int = 160) async {
+    trustDevice(device.id)
     let key = fusionKey(serial: device.id, packageName: app.packageName)
     if let existing = fusionWindows[key] {
       existing.window?.makeKeyAndOrderFront(nil)
@@ -394,28 +378,34 @@ final class SessionCoordinator: ObservableObject {
   }
 
   func stopMirror(for device: Device) async {
-    pollTasks[device.id]?.cancel()
-    pollTasks.removeValue(forKey: device.id)
-    activePanel.removeValue(forKey: device.id)
-
-    // If there are Fusion windows for this device, close them too so freeform
-    // settings get properly restored.
-    let fusionKeys = fusionWindows.keys.filter { $0.hasPrefix(device.id + "|") }
-    for key in fusionKeys {
-      fusionWindows[key]?.close()
-      fusionWindows[key] = nil
-    }
-
-    // Restore freeform settings before tearing down the mirror session.
-    if let token = freeformTokens.removeValue(forKey: device.id),
-       let activator = freeformActivators[device.id] {
-      await activator.deactivate(token)
-    }
-
+    pollTasks[device.id]?.cancel(); pollTasks.removeValue(forKey: device.id); activePanel.removeValue(forKey: device.id)
+    for key in fusionWindows.keys.filter({ $0.hasPrefix(device.id + "|") }) { fusionWindows[key]?.close(); fusionWindows[key] = nil }
+    if let t = freeformTokens.removeValue(forKey: device.id), let a = freeformActivators[device.id] { await a.deactivate(t) }
     guard let controller = mirrorWindows[device.id] else { return }
-    await controller.session.stop()
-    controller.close()
-    mirrorWindows.removeValue(forKey: device.id)
+    await controller.session.stop(); controller.close(); mirrorWindows.removeValue(forKey: device.id)
+  }
+
+  func disconnectWirelessDevice(for device: Device) async {
+    guard device.transport == .wifi else { return }
+    if let mc = mirrorWindows[device.id] {
+      pollTasks[device.id]?.cancel(); pollTasks.removeValue(forKey: device.id); activePanel.removeValue(forKey: device.id)
+      autoMirroredSerials.remove(device.id)
+      await mc.session.stop(); mc.close(); mirrorWindows.removeValue(forKey: device.id)
+    }
+    for key in fusionWindows.keys.filter({ $0.hasPrefix(device.id + "|") }) { fusionWindows[key]?.close(); fusionWindows[key] = nil }
+    if let t = freeformTokens.removeValue(forKey: device.id), let a = freeformActivators[device.id] { await a.deactivate(t) }
+    filesWindows[device.id]?.close(); filesWindows.removeValue(forKey: device.id); autoMirroredSerials.remove(device.id)
+    let parts = device.id.split(separator: ":").map(String.init)
+    if parts.count == 2, let p = Int(parts[1]) {
+      do { try await ResourceLocator.wirelessClient().disconnect(host: parts[0], port: p); log.notice("disconnected \(device.id)") }
+      catch { log.error("disconnect error: \(error)") }
+    } else {
+      let b = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
+      let pr = Process(); pr.executableURL = b; pr.arguments = ["disconnect", device.id]
+      let pp = Pipe(); pr.standardOutput = pp; pr.standardError = pp
+      do { try pr.run(); pr.waitUntilExit(); log.notice("disconnected \(device.id)") }
+      catch { log.error("disconnect error: \(error)") }
+    }
   }
 
   // MARK: launch / relaunch
