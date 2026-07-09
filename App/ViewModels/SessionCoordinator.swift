@@ -687,11 +687,6 @@ final class SessionCoordinator: ObservableObject {
       try? await Self.runAdb(adbBin, ["-s", deviceId, "forward", "--remove", "tcp:\(localPort)"], timeout: 3)
     }
   }
-          }
-        } catch { try? await Task.sleep(nanoseconds: 5_000_000_000) }
-      }
-    }
-  }
 }
 
 enum ResourceLocator {
