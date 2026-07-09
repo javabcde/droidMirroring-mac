@@ -74,7 +74,6 @@ class AgentService : Service() {
         super.onDestroy()
         unregisterMdns()
         stopSseServer()
-        if (hasRoot()) disableAdbTcp()
         isRunning = false
     }
 
@@ -99,19 +98,6 @@ class AgentService : Service() {
             Log.i(TAG, "ADB TCP property set, exit=${proc.exitValue()}")
         } catch (e: Exception) {
             Log.e(TAG, "failed to set ADB TCP port", e)
-        }
-    }
-
-    private fun disableAdbTcp() {
-        try {
-            Log.i(TAG, "disabling ADB TCP (property only, no restart)")
-            Runtime.getRuntime().exec(arrayOf(
-                "/system/bin/su", "-c",
-                "setprop service.adb.tcp.port -1"
-            ))
-            Log.i(TAG, "ADB TCP disabled")
-        } catch (e: Exception) {
-            Log.e(TAG, "failed to disable ADB TCP", e)
         }
     }
 
