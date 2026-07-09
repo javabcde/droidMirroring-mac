@@ -630,17 +630,32 @@ final class SessionCoordinator: ObservableObject {
   private func startNotificationWatcher(for device: Device) {
     let deviceId = device.id
     let parts = deviceId.split(separator: ":").map(String.init)
-    guard parts.count == 2, let host = parts.first, parts.last == "5555" else { return }
-    let sseURL = "http://\(host):5557/notifications"
+    guard parts.count == 2, let host = parts.first, parts.last == "5555" else {
+      log.warning("[coordinator] notification watcher: invalid device id \(deviceId)")
+      return
+    }
+
+    // Use adb forward tunnel to bypass phone firewall
+    let localPort: UInt16 = 15557 + UInt16(abs(deviceId.hashValue) % 1000)
+    let adbBin = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
+    let sseURL = "http://127.0.0.1:\(localPort)/notifications"
+    log.notice("[coordinator] setting up notification forward \(localPort) -> 5557")
+
+    // Set up forward (best-effort)
+    Task {
+      try? await Self.runAdb(adbBin, ["-s", deviceId, "forward", "tcp:\(localPort)", "tcp:5557"], timeout: 5)
+    }
 
     notificationWatchers[deviceId]?.cancel()
     notificationWatchers[deviceId] = Task { [weak self] in
       while !Task.isCancelled {
-        guard let self, self.mirrorWindows[deviceId] != nil else { return }
-        guard let url = URL(string: sseURL) else { return }
+        guard let self, self.mirrorWindows[deviceId] != nil else { break }
+        guard let url = URL(string: sseURL) else { break }
 
         do {
-          let (bytes, _) = try await URLSession.shared.bytes(for: URLRequest(url: url, timeoutInterval: 60))
+          log.notice("[coordinator] SSE connecting to \(sseURL)")
+          let (bytes, _) = try await URLSession.shared.bytes(for: URLRequest(url: url, timeoutInterval: 120))
+          log.notice("[coordinator] SSE connected, reading events...")
           for try await line in bytes.lines {
             guard line.hasPrefix("data:") else { continue }
             let json = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
@@ -651,6 +666,7 @@ final class SessionCoordinator: ObservableObject {
             let title = notif["title"] as? String ?? ""
             let text = notif["text"] as? String ?? ""
             let package = notif["package"] as? String ?? ""
+            log.notice("[coordinator] SSE received: \(title) - \(text)")
 
             await MainActor.run {
               let content = UNMutableNotificationContent()
@@ -661,6 +677,16 @@ final class SessionCoordinator: ObservableObject {
                 UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
               )
             }
+          }
+        } catch {
+          log.warning("[coordinator] SSE error for \(deviceId): \(error), retrying in 5s")
+          try? await Task.sleep(nanoseconds: 5_000_000_000)
+        }
+      }
+      // Cleanup forward
+      try? await Self.runAdb(adbBin, ["-s", deviceId, "forward", "--remove", "tcp:\(localPort)"], timeout: 3)
+    }
+  }
           }
         } catch { try? await Task.sleep(nanoseconds: 5_000_000_000) }
       }

@@ -120,7 +120,6 @@ class AgentService : Service() {
                             }
                             val isPost = request.startsWith("POST")
                             if (isPost) {
-                                // Read POST body and broadcast to all SSE clients
                                 val contentLength = request.lines()
                                     .find { it.startsWith("Content-Length:", ignoreCase = true) }
                                     ?.substringAfter(":")?.trim()?.toIntOrNull() ?: 0
@@ -133,8 +132,8 @@ class AgentService : Service() {
                                 val data = String(body, 0, read)
                                 broadcast("data: $data\n\n")
                                 out.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK".toByteArray())
+                                out.flush()
                             } else {
-                                // SSE GET — keep connection open
                                 val headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: keep-alive\r\n\r\n"
                                 out.write(headers.toByteArray())
                                 out.flush()
@@ -142,7 +141,7 @@ class AgentService : Service() {
                                 while (input.read() != -1) { /* drain */ }
                             }
                         } catch (_: Exception) {}
-                        sseClients.remove(client.getOutputStream())
+                        if (!isPost) sseClients.remove(out)
                         try { client.close() } catch (_: Exception) {}
                     }, "sse-client").apply { isDaemon = true; start() }
                 }
