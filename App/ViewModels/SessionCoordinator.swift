@@ -635,21 +635,24 @@ final class SessionCoordinator: ObservableObject {
       return
     }
 
-    // Use adb forward tunnel to bypass phone firewall
     let localPort: UInt16 = 15557 + UInt16(abs(deviceId.hashValue) % 1000)
     let adbBin = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
     let sseURL = "http://127.0.0.1:\(localPort)/notifications"
     log.notice("[coordinator] setting up notification forward \(localPort) -> 5557")
 
-    // Set up forward (best-effort)
-    Task {
-      try? await Self.runAdb(adbBin, ["-s", deviceId, "forward", "tcp:\(localPort)", "tcp:5557"], timeout: 5)
-    }
-
     notificationWatchers[deviceId]?.cancel()
     notificationWatchers[deviceId] = Task { [weak self] in
+      // Set up forward before connecting
+      do {
+        try await Self.runAdb(adbBin, ["-s", deviceId, "forward", "tcp:\(localPort)", "tcp:5557"], timeout: 5)
+        log.notice("[coordinator] notification forward established")
+      } catch {
+        log.warning("[coordinator] notification forward failed: \(error)")
+        return
+      }
+
       while !Task.isCancelled {
-        guard let self, self.mirrorWindows[deviceId] != nil else { break }
+        guard let self else { break }
         guard let url = URL(string: sseURL) else { break }
 
         do {
@@ -683,7 +686,6 @@ final class SessionCoordinator: ObservableObject {
           try? await Task.sleep(nanoseconds: 5_000_000_000)
         }
       }
-      // Cleanup forward
       try? await Self.runAdb(adbBin, ["-s", deviceId, "forward", "--remove", "tcp:\(localPort)"], timeout: 3)
     }
   }
