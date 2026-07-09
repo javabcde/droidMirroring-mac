@@ -77,14 +77,16 @@ class AgentService : Service() {
             val port = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .getString(KEY_PORT, ADB_TCP_PORT) ?: ADB_TCP_PORT
             Log.i(TAG, "enabling ADB TCP on port $port")
+            val portNum = port.toIntOrNull() ?: 5555
 
-            // Check if port is already listening — if mirroring is active,
-            // restarting adbd will crash the phone. Skip restart in that case.
+            // Check if port is already listening via /proc/net/tcp (no root needed).
+            // If mirroring is active, adbd restart will corrupt the display and crash.
+            val portHex = String.format("%04X", portNum)
             val alreadyOpen = try {
-                val p = Runtime.getRuntime().exec(arrayOf("/system/bin/su", "-c", "ss -tlnp 2>/dev/null | grep ':$port ' || true"))
+                val p = Runtime.getRuntime().exec(arrayOf("cat", "/proc/net/tcp"))
                 val out = p.inputStream.bufferedReader().readText()
                 p.waitFor()
-                out.contains(":$port")
+                out.lines().any { it.split("\\s+".toRegex()).getOrNull(2)?.endsWith(":$portHex") == true }
             } catch (_: Exception) { false }
 
             if (alreadyOpen) {
