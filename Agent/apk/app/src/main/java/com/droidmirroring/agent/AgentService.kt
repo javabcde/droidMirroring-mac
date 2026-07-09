@@ -165,34 +165,54 @@ class AgentService : Service() {
         sseClients.clear()
     }
 
+    private var nsdListener: NsdManager.RegistrationListener? = null
+    private var nsdManager: NsdManager? = null
+
     private fun registerMdns() {
         try {
+            // Unregister any previous registration first (START_STICKY re-entry)
+            unregisterMdns()
+            nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
             val model = getDeviceModel()
-            val nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
-            nsdManager.registerService(
+            val listener = object : NsdManager.RegistrationListener {
+                override fun onServiceRegistered(info: NsdServiceInfo) {
+                    Log.i(TAG, "mDNS registered: ${info.serviceName}")
+                }
+                override fun onRegistrationFailed(s: NsdServiceInfo, e: Int) {
+                    Log.e(TAG, "mDNS failed: $e")
+                }
+                override fun onServiceUnregistered(s: NsdServiceInfo) {}
+                override fun onUnregistrationFailed(s: NsdServiceInfo, e: Int) {}
+            }
+            nsdListener = listener
+            nsdManager?.registerService(
                 NsdServiceInfo().apply {
                     serviceName = model
                     serviceType = "_droidmirror._tcp"
                     port = SSE_PORT
                 },
                 NsdManager.PROTOCOL_DNS_SD,
-                object : NsdManager.RegistrationListener {
-                    override fun onServiceRegistered(info: NsdServiceInfo) {
-                        Log.i(TAG, "mDNS registered: ${info.serviceName}")
-                    }
-                    override fun onRegistrationFailed(s: NsdServiceInfo, e: Int) {
-                        Log.e(TAG, "mDNS failed: $e")
-                    }
-                    override fun onServiceUnregistered(s: NsdServiceInfo) {}
-                    override fun onUnregistrationFailed(s: NsdServiceInfo, e: Int) {}
-                })
+                listener)
             Log.i(TAG, "mDNS registration requested")
         } catch (e: Exception) {
             Log.e(TAG, "mDNS error", e)
         }
     }
 
-    private fun unregisterMdns() {}
+    private fun unregisterMdns() {
+        val mgr = nsdManager
+        val listener = nsdListener
+        nsdManager = null
+        nsdListener = null
+        if (mgr != null && listener != null) {
+            try {
+                mgr.unregisterService(listener)
+                Log.i(TAG, "mDNS unregistered")
+            } catch (e: Exception) {
+                Log.e(TAG, "mDNS unregister failed", e)
+            }
+        }
+    }
 
     private fun getDeviceModel(): String {
         return try {
