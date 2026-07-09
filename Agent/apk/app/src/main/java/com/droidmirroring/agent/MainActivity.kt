@@ -45,6 +45,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        binding.btnRestartAdbd.setOnClickListener {
+            AgentService.restartAdbd()
+            binding.textStatus.text = "ADB 已重启"
+        }
+
         binding.switchAgent.setOnCheckedChangeListener { _, isChecked ->
             Log.i(TAG, "switch toggled: isChecked=$isChecked")
             if (isChecked) {

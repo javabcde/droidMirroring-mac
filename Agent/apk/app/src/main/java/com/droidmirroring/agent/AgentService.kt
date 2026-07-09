@@ -30,6 +30,21 @@ class AgentService : Service() {
         const val KEY_PORT = "agent_port"
 
         val sseClients = CopyOnWriteArrayList<OutputStream>()
+
+        @JvmStatic
+        fun restartAdbd() {
+            try {
+                Log.i(TAG, "restarting adbd")
+                val proc = Runtime.getRuntime().exec(arrayOf(
+                    "/system/bin/su", "-c",
+                    "setprop ctl.restart adbd 2>/dev/null || stop adbd && start adbd 2>/dev/null || true"
+                ))
+                proc.waitFor()
+                Log.i(TAG, "adbd restarted, exit=${proc.exitValue()}")
+            } catch (e: Exception) {
+                Log.e(TAG, "failed to restart adbd", e)
+            }
+        }
     }
 
     private var sseThread: Thread? = null
@@ -76,31 +91,14 @@ class AgentService : Service() {
         try {
             val port = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .getString(KEY_PORT, ADB_TCP_PORT) ?: ADB_TCP_PORT
-            Log.i(TAG, "enabling ADB TCP on port $port")
-            val portNum = port.toIntOrNull() ?: 5555
-
-            // Check if port is already listening via /proc/net/tcp (no root needed).
-            // If mirroring is active, adbd restart will corrupt the display and crash.
-            val portHex = String.format("%04X", portNum)
-            val alreadyOpen = try {
-                val p = Runtime.getRuntime().exec(arrayOf("cat", "/proc/net/tcp"))
-                val out = p.inputStream.bufferedReader().readText()
-                p.waitFor()
-                out.lines().any { it.split("\\s+".toRegex()).getOrNull(2)?.endsWith(":$portHex") == true }
-            } catch (_: Exception) { false }
-
-            if (alreadyOpen) {
-                Log.i(TAG, "port $port already listening, skipping adbd restart")
-                return
-            }
-
-            val cmd = "setprop service.adb.tcp.port $port && " +
-                      "(setprop ctl.restart adbd 2>/dev/null || stop adbd && start adbd 2>/dev/null || true)"
-            val proc = Runtime.getRuntime().exec(arrayOf("/system/bin/su", "-c", cmd))
+            Log.i(TAG, "setting ADB TCP port to $port")
+            val proc = Runtime.getRuntime().exec(arrayOf(
+                "/system/bin/su", "-c", "setprop service.adb.tcp.port $port"
+            ))
             proc.waitFor()
-            Log.i(TAG, "ADB TCP enabled, exit=${proc.exitValue()}")
+            Log.i(TAG, "ADB TCP property set, exit=${proc.exitValue()}")
         } catch (e: Exception) {
-            Log.e(TAG, "failed to enable ADB TCP", e)
+            Log.e(TAG, "failed to set ADB TCP port", e)
         }
     }
 
