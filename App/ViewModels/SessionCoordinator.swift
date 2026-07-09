@@ -141,6 +141,13 @@ final class SessionCoordinator: ObservableObject {
       existing.window?.makeKeyAndOrderFront(nil)
       return
     }
+    // Agent devices need explicit adb connect before use
+    if device.transport == .wifi, device.id.contains(":5555") {
+      log.notice("[coordinator] connecting agent device \(device.id)")
+      _ = try? await Self.runAdb(
+        Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb"),
+        ["connect", device.id], timeout: 10)
+    }
     let pick = try? await adb.pickActiveDisplay(serial: device.id)
     let displayId = pick?.id ?? 0
     activePanel[device.id] = (

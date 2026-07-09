@@ -39,7 +39,6 @@ public final class DeviceMonitor: ObservableObject {
 
   private func observeAgentDevices() {
     Task { [weak self] in
-      var connected = Set<String>()
       while !Task.isCancelled {
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         guard let self else { return }
@@ -47,29 +46,12 @@ public final class DeviceMonitor: ObservableObject {
         let mapped = agents.map { ep in
           Device(id: "\(ep.host):5555", model: ep.serviceName, transport: .wifi, state: .online)
         }
-        // Auto-trust & auto-connect agent devices
         if !mapped.isEmpty {
           let hosts = mapped.map { $0.id }
           var trusted = Set(UserDefaults.standard.stringArray(forKey: "mirror.trustedDeviceSerials") ?? [])
           trusted.formUnion(hosts)
           UserDefaults.standard.set(Array(trusted), forKey: "mirror.trustedDeviceSerials")
-
-          // adb connect for newly discovered agents
-          for host in hosts where !connected.contains(host) {
-            print("[monitor] auto-connecting agent \(host)")
-            let p = Process()
-            p.executableURL = self.adbBinary
-            p.arguments = ["connect", host]
-            p.standardOutput = Pipe()
-            p.standardError = Pipe()
-            try? p.run()
-            p.waitUntilExit()
-            connected.insert(host)
-          }
         }
-        // Forget agents that disappeared
-        let currentIds = Set(mapped.map { $0.id })
-        connected = connected.intersection(currentIds)
         self.agentDevices = mapped
       }
     }
