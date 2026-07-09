@@ -3,9 +3,13 @@ package com.droidmirroring.agent
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -54,6 +58,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 AgentService.isRunning = true
                 startService(Intent(this, AgentService::class.java))
+                showBatteryGuide()
             } else {
                 AgentService.isRunning = false
                 stopService(Intent(this, AgentService::class.java))
@@ -81,9 +86,9 @@ class MainActivity : AppCompatActivity() {
         val rootOk = hasRoot()
         binding.switchAgent.isChecked = running
         binding.textStatus.text = when {
-            running && hasRoot() -> "ADB TCP 已开启"
+            running && rootOk -> "ADB TCP 已开启"
             running -> "发现 + 通知已开启"
-            !hasRoot() -> "需要 Root（可降级使用）"
+            !rootOk -> "需 Root（可降级）"
             else -> "已关闭"
         }
         binding.textAddress.text = "IP: ${getWifiIp()}"
@@ -95,9 +100,24 @@ class MainActivity : AppCompatActivity() {
             val result = proc.inputStream.bufferedReader().readLine()
             proc.waitFor()
             result?.contains("uid=0") == true
-        } catch (_: Exception) {
-            false
-        }
+        } catch (_: Exception) { false }
+    }
+
+    private fun showBatteryGuide() {
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        AlertDialog.Builder(this)
+            .setTitle("保持后台运行")
+            .setMessage("为防止通知推送被系统关闭，建议关闭电池优化。\n\n是否前往设置？")
+            .setPositiveButton("去设置") { _, _ ->
+                try {
+                    startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                } catch (_: Exception) {}
+            }
+            .setNegativeButton("稍后", null)
+            .show()
     }
 
     private fun getWifiIp(): String {
