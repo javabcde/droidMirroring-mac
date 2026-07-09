@@ -38,9 +38,16 @@ jobs:
           path: Agent/apk/app/build/outputs/apk/debug/app-debug.apk
 
   build:
+    needs: agent-apk
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download Agent APK
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-apk
+          path: App/Resources/
 
       - name: Install XcodeGen
         run: brew install xcodegen
