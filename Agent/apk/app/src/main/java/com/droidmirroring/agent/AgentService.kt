@@ -22,36 +22,24 @@ class AgentService : Service() {
         private const val CHANNEL_ID = "agent_channel"
         private const val SSE_PORT = 5557
 
-        @Volatile
-        var isRunning = false
+    @Volatile
+    var isRunning = false
 
-        private const val ADB_TCP_PORT = "5555"
-        const val PREFS_NAME = "agent_prefs"
-        const val KEY_PORT = "agent_port"
+    private const val ADB_TCP_PORT = "5555"
+    const val PREFS_NAME = "agent_prefs"
+    const val KEY_PORT = "agent_port"
 
-        val sseClients = CopyOnWriteArrayList<OutputStream>()
-
-        @JvmStatic
-        fun restartAdbd() {
-            try {
-                Log.i(TAG, "restarting adbd")
-                val proc = Runtime.getRuntime().exec(arrayOf(
-                    "/system/bin/su", "-c",
-                    "setprop ctl.restart adbd 2>/dev/null || stop adbd && start adbd 2>/dev/null || true"
-                ))
-                proc.waitFor()
-                Log.i(TAG, "adbd restarted, exit=${proc.exitValue()}")
-            } catch (e: Exception) {
-                Log.e(TAG, "failed to restart adbd", e)
-            }
-        }
+    val sseClients = CopyOnWriteArrayList<OutputStream>()
     }
 
     private var sseThread: Thread? = null
+    private var rootShell: Process? = null
+    private var rootOut: java.io.OutputStream? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        startRootShell()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -63,7 +51,7 @@ class AgentService : Service() {
         if (hasRoot()) {
             enableAdbTcp()
         } else {
-            Log.w(TAG, "no root, ADB TCP skipped — use manual wireless debugging")
+            Log.w(TAG, "no root, ADB TCP skipped")
         }
         return START_STICKY
     }
@@ -74,28 +62,49 @@ class AgentService : Service() {
         super.onDestroy()
         unregisterMdns()
         stopSseServer()
+        stopRootShell()
         isRunning = false
     }
 
-    private fun hasRoot(): Boolean {
+    private fun startRootShell() {
+        try {
+            val pb = ProcessBuilder("/system/bin/su")
+            pb.redirectErrorStream(true)
+            rootShell = pb.start()
+            rootOut = rootShell!!.outputStream
+            Log.i(TAG, "root shell started")
+        } catch (e: Exception) {
+            Log.e(TAG, "failed to start root shell", e)
+        }
+    }
+
+    private fun stopRootShell() {
+        try { rootOut?.close() } catch (_: Exception) {}
+        try { rootShell?.destroy() } catch (_: Exception) {}
+        rootOut = null
+        rootShell = null
+    }
+
+    private fun rootExec(cmd: String): Boolean {
+        val sh = rootShell ?: return false
+        val out = rootOut ?: return false
         return try {
-            val proc = Runtime.getRuntime().exec(arrayOf("/system/bin/su", "-c", "id"))
-            val result = proc.inputStream.bufferedReader().readLine()
-            proc.waitFor()
-            result?.contains("uid=0") == true
+            out.write("$cmd; echo RC:\$?\n".toByteArray())
+            out.flush()
+            true
         } catch (_: Exception) { false }
+    }
+
+    private fun hasRoot(): Boolean {
+        return rootShell != null
     }
 
     private fun enableAdbTcp() {
         try {
             val port = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .getString(KEY_PORT, ADB_TCP_PORT) ?: ADB_TCP_PORT
-            Log.i(TAG, "setting ADB TCP port to $port")
-            val proc = Runtime.getRuntime().exec(arrayOf(
-                "/system/bin/su", "-c", "setprop service.adb.tcp.port $port"
-            ))
-            proc.waitFor()
-            Log.i(TAG, "ADB TCP property set, exit=${proc.exitValue()}")
+            Log.i(TAG, "setting ADB TCP port to $port via persistent shell")
+            rootExec("setprop service.adb.tcp.port $port")
         } catch (e: Exception) {
             Log.e(TAG, "failed to set ADB TCP port", e)
         }
