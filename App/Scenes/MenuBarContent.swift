@@ -7,6 +7,7 @@ struct MenuBarContent: View {
   @EnvironmentObject var monitor: DeviceMonitor
   @Environment(\.openWindow) private var openWindow
   @Environment(\.openSettings) private var openSettings
+  @State private var isDeploying = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -15,12 +16,40 @@ struct MenuBarContent: View {
       Divider()
       Button { NSApp.activate(ignoringOtherApps: true); openWindow(id: WindowID.pairing) } label: { Label("Add Wireless Device…", systemImage: "wifi.router") }.buttonStyle(.plain)
       Button {
+        guard !isDeploying else { return }
+        isDeploying = true
         Task {
+          defer { isDeploying = false }
           for device in monitor.devices where device.state == .online && device.transport == .usb {
-            try? await SessionCoordinator.shared.deployAgent(to: device.id)
+            do {
+              try await SessionCoordinator.shared.deployAgent(to: device.id)
+              await MainActor.run {
+                let alert = NSAlert()
+                alert.messageText = "安装完成"
+                alert.informativeText = "已在 \(device.model.isEmpty ? device.id : device.model) 上安装 Agent。打开手机上的 DroidMirror Agent，打开开关即可。"
+                alert.alertStyle = .informational
+                alert.runModal()
+              }
+            } catch {
+              await MainActor.run {
+                let alert = NSAlert()
+                alert.messageText = "安装失败"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .critical
+                alert.runModal()
+              }
+            }
           }
         }
-      } label: { Label("Install Agent on Device…", systemImage: "iphone.badge.plus") }.buttonStyle(.plain)
+      } label: {
+        if isDeploying {
+          Label("正在安装 Agent…", systemImage: "arrow.down.circle.dotted")
+        } else {
+          Label("在手机上安装 Agent…", systemImage: "iphone.badge.plus")
+        }
+      }
+      .buttonStyle(.plain)
+      .disabled(isDeploying)
       Button { openSettings() } label: { Label("Settings…", systemImage: "gearshape") }.buttonStyle(.plain)
       Divider()
       Button(role: .destructive) { NSApp.terminate(nil) } label: { Label("Quit macDros", systemImage: "power") }.buttonStyle(.plain).keyboardShortcut("q", modifiers: [.command])

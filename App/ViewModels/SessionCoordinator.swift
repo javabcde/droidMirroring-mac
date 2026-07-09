@@ -567,30 +567,49 @@ final class SessionCoordinator: ObservableObject {
     }
     log.notice("[coordinator] deploying agent APK to \(serial, privacy: .public)")
 
-    // Try adb install first
     let b = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
-    var pr = Process(); pr.executableURL = b
-    pr.arguments = ["-s", serial, "install", "-r", apk.path]
-    let pp = Pipe(); pr.standardOutput = pp; pr.standardError = pp
-    try? pr.run(); pr.waitUntilExit()
 
-    let out = String(data: pp.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-    if out.contains("Success") {
+    // Try adb install first — off the main actor so we don't beachball
+    let installOut = try await Self.runAdb(b, ["-s", serial, "install", "-r", apk.path])
+    if installOut.contains("Success") {
       log.notice("[coordinator] agent APK installed")
       return
     }
 
     // Fallback: push to Downloads and open installer
-    log.warning("[coordinator] adb install failed, pushing to Downloads...")
-    pr = Process(); pr.executableURL = b
-    pr.arguments = ["-s", serial, "push", apk.path, "/sdcard/Download/app-debug.apk"]
-    let p2 = Pipe(); pr.standardOutput = p2; pr.standardError = p2
-    try? pr.run(); pr.waitUntilExit()
+    log.warning("[coordinator] adb install failed (\(installOut.prefix(200))), pushing to Downloads...")
+    _ = try await Self.runAdb(b, ["-s", serial, "push", apk.path, "/sdcard/Download/app-debug.apk"])
 
     _ = try? await adb.shell(
       "am start -a android.intent.action.VIEW -d file:///sdcard/Download/app-debug.apk -t application/vnd.android.package-archive",
       serial: serial
     )
+  }
+
+  /// Run adb off the main actor. Returns combined stdout+stderr.
+  private nonisolated static func runAdb(_ url: URL, _ args: [String]) async throws -> String {
+    try await withCheckedThrowingContinuation { continuation in
+      let pr = Process()
+      pr.executableURL = url
+      pr.arguments = args
+      let pipe = Pipe()
+      pr.standardOutput = pipe
+      pr.standardError = pipe
+      pr.terminationHandler = { proc in
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let out = String(data: data, encoding: .utf8) ?? ""
+        if proc.terminationStatus == 0 {
+          continuation.resume(returning: out)
+        } else {
+          continuation.resume(returning: out) // non-zero exit is still a valid result for us
+        }
+      }
+      do {
+        try pr.run()
+      } catch {
+        continuation.resume(throwing: error)
+      }
+    }
   }
 
   // MARK: - Agent Notification (SSE)

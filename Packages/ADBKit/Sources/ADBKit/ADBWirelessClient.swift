@@ -9,8 +9,9 @@ public actor ADBWirelessClient {
   public enum WirelessError: Error, Sendable, Equatable {
     case missingMDNS              // no _adb-tls-* services on this network
     case pairingTimeout           // device didn't respond to the code
-    case pairingInvalidCode       // wrong 6-digit code
-    case pairingSwitchFailed      // device rejected the pairing
+    case pairingInvalidCode       // wrong 6-digit code or expired
+    case pairingAlreadyDone       // device is already paired
+    case pairingSwitchFailed(raw: String) // device rejected with specific reason
     case connectUnverified        // device known but key not trusted
     case addressInvalid(String)   // malformed ip:port
     case adbMissing               // bundled adb not found
@@ -109,13 +110,16 @@ public actor ADBWirelessClient {
     if text.contains("connection refused") || text.contains("timeout") || text.contains("timed out") {
       return .pairingTimeout
     }
-    if text.contains("wrong password") || text.contains("invalid") {
+    if text.contains("wrong password") || text.contains("invalid") || text.contains("expired") {
       return .pairingInvalidCode
     }
     if text.contains("not found") || text.contains("cannot resolve") {
       return .missingMDNS
     }
-    return .pairingSwitchFailed
+    if text.contains("already") {
+      return .pairingAlreadyDone
+    }
+    return .pairingSwitchFailed(raw: (stdout + stderr).trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
   private func classifyConnect(text: String) -> WirelessError {

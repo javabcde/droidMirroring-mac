@@ -176,8 +176,9 @@ private func humanError(_ err: ADBWirelessClient.WirelessError) -> String {
   switch err {
   case .missingMDNS: return String(localized: "No wireless ADB service found on this network.")
   case .pairingTimeout: return String(localized: "Pairing timed out — keep the pair screen open on the device.")
-  case .pairingInvalidCode: return String(localized: "Wrong pairing code — try again.")
-  case .pairingSwitchFailed: return String(localized: "Device rejected the pairing.")
+  case .pairingInvalidCode: return String(localized: "Wrong or expired pairing code — check the code and try again.")
+  case .pairingAlreadyDone: return String(localized: "This device is already paired — try connecting instead.")
+  case .pairingSwitchFailed(let raw): return raw.isEmpty ? String(localized: "Device rejected the pairing.") : String(localized: "配对失败: \(raw)")
   case .connectUnverified: return String(localized: "Device is not authorized — accept the prompt on Android.")
   case .addressInvalid(let s): return String(localized: "Invalid address: \(s)")
   case .adbMissing: return String(localized: "Bundled adb is missing — reinstall DroidMirroring.")

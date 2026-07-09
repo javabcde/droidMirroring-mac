@@ -77,11 +77,12 @@ class AgentService : Service() {
             val port = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .getString(KEY_PORT, ADB_TCP_PORT) ?: ADB_TCP_PORT
             Log.i(TAG, "enabling ADB TCP on port $port")
-            Runtime.getRuntime().exec(arrayOf(
-                "/system/bin/su", "-c",
-                "setprop service.adb.tcp.port $port && stop adbd && start adbd"
-            ))
-            Log.i(TAG, "ADB TCP enabled")
+
+            val cmd = "setprop service.adb.tcp.port $port && " +
+                      "(setprop ctl.restart adbd 2>/dev/null || stop adbd && start adbd 2>/dev/null || true)"
+            val proc = Runtime.getRuntime().exec(arrayOf("/system/bin/su", "-c", cmd))
+            proc.waitFor()
+            Log.i(TAG, "ADB TCP enabled, exit=${proc.exitValue()}")
         } catch (e: Exception) {
             Log.e(TAG, "failed to enable ADB TCP", e)
         }
@@ -89,10 +90,10 @@ class AgentService : Service() {
 
     private fun disableAdbTcp() {
         try {
-            Log.i(TAG, "disabling ADB TCP")
+            Log.i(TAG, "disabling ADB TCP (property only, no restart)")
             Runtime.getRuntime().exec(arrayOf(
                 "/system/bin/su", "-c",
-                "setprop service.adb.tcp.port -1 && stop adbd && start adbd"
+                "setprop service.adb.tcp.port -1"
             ))
             Log.i(TAG, "ADB TCP disabled")
         } catch (e: Exception) {
