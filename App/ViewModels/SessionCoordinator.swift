@@ -5,6 +5,7 @@ import ScrcpyClient
 import MirrorEngine
 import FusionEngine
 import SharedModels
+import UserNotifications
 import os
 
 private let log = Logger(subsystem: "com.droidmirroring.app", category: "coordinator")
@@ -157,6 +158,7 @@ final class SessionCoordinator: ObservableObject {
       controller = c
       try await launchSession(for: device, displayId: displayId, into: c)
       startActiveDisplayPolling(for: device)
+      startNotificationWatcher(for: device)
     } catch {
       // ── Audio fallback ──────────────────────────────────────────────
       // If the device has no audio HAL (e.g. ZTE F50), scrcpy-server may
@@ -179,6 +181,7 @@ final class SessionCoordinator: ObservableObject {
         do {
           try await launchSession(for: device, displayId: displayId, into: c, audioEnabled: false)
           startActiveDisplayPolling(for: device)
+          startNotificationWatcher(for: device)
           log.notice("mirror started without audio for \(device.id)")
           return
         } catch {
@@ -569,5 +572,49 @@ enum ResourceLocator {
   static func wirelessClient() -> ADBWirelessClient {
     let adb = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
     return ADBWirelessClient(adbBinary: adb)
+  }
+
+  // MARK: - Agent Notification (SSE)
+
+  private var notificationWatchers: [String: Task<Void, Never>] = [:]
+
+  private func startNotificationWatcher(for device: Device) {
+    let deviceId = device.id
+    let parts = deviceId.split(separator: ":").map(String.init)
+    guard parts.count == 2, let host = parts.first, parts.last == "5555" else { return }
+    let sseURL = "http://\(host):5557/notifications"
+
+    notificationWatchers[deviceId]?.cancel()
+    notificationWatchers[deviceId] = Task { [weak self] in
+      while !Task.isCancelled {
+        guard let self, self.mirrorWindows[deviceId] != nil else { return }
+        guard let url = URL(string: sseURL) else { return }
+
+        do {
+          let (bytes, _) = try await URLSession.shared.bytes(for: URLRequest(url: url, timeoutInterval: 60))
+          for try await line in bytes.lines {
+            guard line.hasPrefix("data:") else { continue }
+            let json = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+            guard let data = json.data(using: .utf8),
+                  let notif = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+
+            let title = notif["title"] as? String ?? ""
+            let text = notif["text"] as? String ?? ""
+            let package = notif["package"] as? String ?? ""
+
+            await MainActor.run {
+              let content = UNMutableNotificationContent()
+              content.title = title.isEmpty ? package : title
+              content.body = text
+              content.sound = .default
+              UNUserNotificationCenter.current().add(
+                UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+              )
+            }
+          }
+        } catch { try? await Task.sleep(nanoseconds: 5_000_000_000) }
+      }
+    }
   }
 }
