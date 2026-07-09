@@ -140,8 +140,8 @@ class AgentService : Service() {
                                 sseClients.add(out)
                                 while (input.read() != -1) { /* drain */ }
                             }
+                            if (!isPost) sseClients.remove(out)
                         } catch (_: Exception) {}
-                        if (!isPost) sseClients.remove(out)
                         try { client.close() } catch (_: Exception) {}
                     }, "sse-client").apply { isDaemon = true; start() }
                 }
