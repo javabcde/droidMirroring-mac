@@ -556,6 +556,43 @@ final class SessionCoordinator: ObservableObject {
     }
   }
 
+  // MARK: - Agent APK Deployment
+
+  func deployAgent(to serial: String) async throws {
+    guard let apk = Bundle.main.url(forResource: "app-debug", withExtension: "apk")
+            ?? Bundle.main.url(forResource: "app-debug", withExtension: "apk", subdirectory: "Resources")
+    else {
+      log.error("[coordinator] agent APK not found in bundle")
+      throw DroidMirroringError.fileTransfer("agent APK not found")
+    }
+    log.notice("[coordinator] deploying agent APK to \(serial, privacy: .public)")
+
+    // Try adb install first
+    let b = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
+    var pr = Process(); pr.executableURL = b
+    pr.arguments = ["-s", serial, "install", "-r", apk.path]
+    let pp = Pipe(); pr.standardOutput = pp; pr.standardError = pp
+    try? pr.run(); pr.waitUntilExit()
+
+    let out = String(data: pp.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    if out.contains("Success") {
+      log.notice("[coordinator] agent APK installed")
+      return
+    }
+
+    // Fallback: push to Downloads and open installer
+    log.warning("[coordinator] adb install failed, pushing to Downloads...")
+    pr = Process(); pr.executableURL = b
+    pr.arguments = ["-s", serial, "push", apk.path, "/sdcard/Download/app-debug.apk"]
+    let p2 = Pipe(); pr.standardOutput = p2; pr.standardError = p2
+    try? pr.run(); pr.waitUntilExit()
+
+    _ = try? await adb.shell(
+      "am start -a android.intent.action.VIEW -d file:///sdcard/Download/app-debug.apk -t application/vnd.android.package-archive",
+      serial: serial
+    )
+  }
+
   // MARK: - Agent Notification (SSE)
 
   private var notificationWatchers: [String: Task<Void, Never>] = [:]

@@ -14,6 +14,13 @@ struct MenuBarContent: View {
       if monitor.devices.contains(where: { $0.state == .online }) { deviceList } else { emptyState }
       Divider()
       Button { NSApp.activate(ignoringOtherApps: true); openWindow(id: WindowID.pairing) } label: { Label("Add Wireless Device…", systemImage: "wifi.router") }.buttonStyle(.plain)
+      Button {
+        Task {
+          for device in monitor.devices where device.state == .online && device.transport == .usb {
+            try? await SessionCoordinator.shared.deployAgent(to: device.id)
+          }
+        }
+      } label: { Label("Install Agent on Device…", systemImage: "iphone.badge.plus") }.buttonStyle(.plain)
       Button { openSettings() } label: { Label("Settings…", systemImage: "gearshape") }.buttonStyle(.plain)
       Divider()
       Button(role: .destructive) { NSApp.terminate(nil) } label: { Label("Quit macDros", systemImage: "power") }.buttonStyle(.plain).keyboardShortcut("q", modifiers: [.command])
