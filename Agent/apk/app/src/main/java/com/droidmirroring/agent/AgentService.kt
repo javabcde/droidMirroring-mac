@@ -78,14 +78,22 @@ class AgentService : Service() {
                 .getString(KEY_PORT, ADB_TCP_PORT) ?: ADB_TCP_PORT
             Log.i(TAG, "enabling ADB TCP on port $port")
 
-            // Only restart adbd if the port changed — avoids killing
-            // an active mirroring session when Android restarts the service
-            val cmd = "if [ \"$(getprop service.adb.tcp.port)\" != \"$port\" ]; then " +
-                      "  setprop service.adb.tcp.port $port && " +
-                      "  (setprop ctl.restart adbd 2>/dev/null || stop adbd && start adbd 2>/dev/null || true); " +
-                      "else " +
-                      "  echo 'port already set, skipping restart'; " +
-                      "fi"
+            // Check if port is already listening — if mirroring is active,
+            // restarting adbd will crash the phone. Skip restart in that case.
+            val alreadyOpen = try {
+                val p = Runtime.getRuntime().exec(arrayOf("/system/bin/su", "-c", "ss -tlnp 2>/dev/null | grep ':$port ' || true"))
+                val out = p.inputStream.bufferedReader().readText()
+                p.waitFor()
+                out.contains(":$port")
+            } catch (_: Exception) { false }
+
+            if (alreadyOpen) {
+                Log.i(TAG, "port $port already listening, skipping adbd restart")
+                return
+            }
+
+            val cmd = "setprop service.adb.tcp.port $port && " +
+                      "(setprop ctl.restart adbd 2>/dev/null || stop adbd && start adbd 2>/dev/null || true)"
             val proc = Runtime.getRuntime().exec(arrayOf("/system/bin/su", "-c", cmd))
             proc.waitFor()
             Log.i(TAG, "ADB TCP enabled, exit=${proc.exitValue()}")
