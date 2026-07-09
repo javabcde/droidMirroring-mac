@@ -7,6 +7,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import java.io.OutputStream
@@ -43,6 +44,7 @@ class AgentService : Service() {
         Log.i(TAG, "onStartCommand")
         isRunning = true
         startForeground(NOTIFICATION_ID, buildNotification())
+        ensureAdbWifi()
         registerMdns()
         startSseServer()
         return START_STICKY
@@ -193,6 +195,18 @@ class AgentService : Service() {
                     description = "DroidMirror Agent"
                     setShowBadge(false)
                 })
+        }
+    }
+
+    private fun ensureAdbWifi() {
+        try {
+            val enabled = Settings.Global.getInt(contentResolver, "adb_wifi_enabled", 0)
+            if (enabled == 0) {
+                Log.i(TAG, "enabling wireless ADB")
+                Settings.Global.putInt(contentResolver, "adb_wifi_enabled", 1)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "cannot write adb_wifi_enabled, may need pm grant WRITE_SECURE_SETTINGS")
         }
     }
 }
