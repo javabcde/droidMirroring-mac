@@ -580,6 +580,8 @@ final class SessionCoordinator: ObservableObject {
     let installOut = try await Self.runAdb(b, ["-s", serial, "install", "-r", apk.path], timeout: 30)
     if installOut.contains("Success") {
       log.notice("[coordinator] agent APK installed")
+      // Enable ADB TCP so the agent can be discovered wirelessly
+      _ = try? await Self.runAdb(b, ["-s", serial, "tcpip", "5555"], timeout: 10)
       return
     }
 

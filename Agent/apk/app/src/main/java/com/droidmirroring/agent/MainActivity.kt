@@ -90,28 +90,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateUi() {
         val running = AgentService.isRunning
-        val rootOk = hasRoot()
         val notifyOk = isNotificationListenerEnabled()
         binding.switchAgent.isChecked = running
         binding.textStatus.text = when {
-            running && rootOk && notifyOk -> "ADB TCP + 通知已开启"
-            running && rootOk -> "ADB TCP 已开启（通知未授权）"
             running && notifyOk -> "发现 + 通知已开启"
             running -> "发现已开启（通知未授权）"
-            !rootOk -> "需 Root（可降级）"
             !notifyOk -> "需通知权限"
             else -> "已关闭"
         }
         binding.textAddress.text = "IP: ${getWifiIp()}"
-    }
-
-    private fun hasRoot(): Boolean {
-        return try {
-            val proc = Runtime.getRuntime().exec(arrayOf("/system/bin/su", "-c", "id"))
-            val result = proc.inputStream.bufferedReader().readLine()
-            proc.waitFor()
-            result?.contains("uid=0") == true
-        } catch (_: Exception) { false }
     }
 
     private fun showBatteryGuide() {

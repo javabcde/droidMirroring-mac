@@ -33,8 +33,6 @@ class AgentService : Service() {
     }
 
     private var sseThread: Thread? = null
-    private var rootShell: Process? = null
-    private var rootOut: java.io.OutputStream? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -48,11 +46,6 @@ class AgentService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
         registerMdns()
         startSseServer()
-        if (hasRoot()) {
-            enableAdbTcp()
-        } else {
-            Log.w(TAG, "no root, ADB TCP skipped")
-        }
         return START_STICKY
     }
 
@@ -62,52 +55,7 @@ class AgentService : Service() {
         super.onDestroy()
         unregisterMdns()
         stopSseServer()
-        stopRootShell()
         isRunning = false
-    }
-
-    private fun startRootShell() {
-        try {
-            val pb = ProcessBuilder("/system/bin/su")
-            pb.redirectErrorStream(true)
-            rootShell = pb.start()
-            rootOut = rootShell!!.outputStream
-            Log.i(TAG, "root shell started")
-        } catch (e: Exception) {
-            Log.e(TAG, "failed to start root shell", e)
-        }
-    }
-
-    private fun stopRootShell() {
-        try { rootOut?.close() } catch (_: Exception) {}
-        try { rootShell?.destroy() } catch (_: Exception) {}
-        rootOut = null
-        rootShell = null
-    }
-
-    private fun rootExec(cmd: String): Boolean {
-        val sh = rootShell ?: return false
-        val out = rootOut ?: return false
-        return try {
-            out.write("$cmd; echo RC:\$?\n".toByteArray())
-            out.flush()
-            true
-        } catch (_: Exception) { false }
-    }
-
-    private fun hasRoot(): Boolean {
-        return rootShell != null
-    }
-
-    private fun enableAdbTcp() {
-        try {
-            val port = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-                .getString(KEY_PORT, ADB_TCP_PORT) ?: ADB_TCP_PORT
-            Log.i(TAG, "setting ADB TCP port to $port via persistent shell")
-            rootExec("setprop service.adb.tcp.port $port")
-        } catch (e: Exception) {
-            Log.e(TAG, "failed to set ADB TCP port", e)
-        }
     }
 
     private fun startSseServer() {
