@@ -555,24 +555,6 @@ final class SessionCoordinator: ObservableObject {
       log.notice("cleaned scrcpy-server on \(device.id)")
     }
   }
-}
-
-enum ResourceLocator {
-  static func scrcpyResources() throws -> ScrcpyServerLauncher.Resources {
-    let bundle = Bundle.main
-    guard let jar = bundle.url(forResource: "scrcpy-server", withExtension: "jar")
-            ?? bundle.url(forResource: "scrcpy-server-v\(ScrcpyServerVersion.current)", withExtension: "jar")
-    else {
-      throw DroidMirroringError.scrcpyProtocol("scrcpy-server.jar not bundled — run scripts/fetch-scrcpy-server.sh")
-    }
-    let adb = bundle.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
-    return .init(serverJar: jar, adbBinary: adb)
-  }
-
-  static func wirelessClient() -> ADBWirelessClient {
-    let adb = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
-    return ADBWirelessClient(adbBinary: adb)
-  }
 
   // MARK: - Agent Notification (SSE)
 
@@ -616,5 +598,23 @@ enum ResourceLocator {
         } catch { try? await Task.sleep(nanoseconds: 5_000_000_000) }
       }
     }
+  }
+}
+
+enum ResourceLocator {
+  static func scrcpyResources() throws -> ScrcpyServerLauncher.Resources {
+    let bundle = Bundle.main
+    guard let jar = bundle.url(forResource: "scrcpy-server", withExtension: "jar")
+            ?? bundle.url(forResource: "scrcpy-server-v\(ScrcpyServerVersion.current)", withExtension: "jar")
+    else {
+      throw DroidMirroringError.scrcpyProtocol("scrcpy-server.jar not bundled — run scripts/fetch-scrcpy-server.sh")
+    }
+    let adb = bundle.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
+    return .init(serverJar: jar, adbBinary: adb)
+  }
+
+  static func wirelessClient() -> ADBWirelessClient {
+    let adb = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
+    return ADBWirelessClient(adbBinary: adb)
   }
 }
