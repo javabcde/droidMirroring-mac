@@ -1,6 +1,7 @@
 package com.droidmirroring.agent
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -47,6 +48,12 @@ class MainActivity : AppCompatActivity() {
         binding.switchAgent.setOnCheckedChangeListener { _, isChecked ->
             Log.i(TAG, "switch toggled: isChecked=$isChecked")
             if (isChecked) {
+                // Check notification listener permission
+                if (!isNotificationListenerEnabled()) {
+                    showNotificationGuide()
+                    binding.switchAgent.isChecked = false
+                    return@setOnCheckedChangeListener
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                         != PackageManager.PERMISSION_GRANTED
@@ -84,11 +91,15 @@ class MainActivity : AppCompatActivity() {
     private fun updateUi() {
         val running = AgentService.isRunning
         val rootOk = hasRoot()
+        val notifyOk = isNotificationListenerEnabled()
         binding.switchAgent.isChecked = running
         binding.textStatus.text = when {
-            running && rootOk -> "ADB TCP 已开启"
-            running -> "发现 + 通知已开启"
+            running && rootOk && notifyOk -> "ADB TCP + 通知已开启"
+            running && rootOk -> "ADB TCP 已开启（通知未授权）"
+            running && notifyOk -> "发现 + 通知已开启"
+            running -> "发现已开启（通知未授权）"
             !rootOk -> "需 Root（可降级）"
+            !notifyOk -> "需通知权限"
             else -> "已关闭"
         }
         binding.textAddress.text = "IP: ${getWifiIp()}"
@@ -132,5 +143,26 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (_: Exception) {}
         return "--"
+    }
+
+    private fun isNotificationListenerEnabled(): Boolean {
+        val cn = ComponentName(this, NotifyListener::class.java)
+        val flat = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: ""
+        return flat.contains(cn.flattenToString())
+    }
+
+    private fun showNotificationGuide() {
+        AlertDialog.Builder(this)
+            .setTitle("需要通知权限")
+            .setMessage("Mac 端接收手机通知需要开启「通知使用权」。\n\n是否前往设置？")
+            .setPositiveButton("去设置") { _, _ ->
+                try {
+                    startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+                } catch (_: Exception) {
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                }
+            }
+            .setNegativeButton("稍后", null)
+            .show()
     }
 }
