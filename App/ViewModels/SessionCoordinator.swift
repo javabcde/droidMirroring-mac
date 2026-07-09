@@ -570,7 +570,7 @@ final class SessionCoordinator: ObservableObject {
     let b = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
 
     // Try adb install first — off the main actor so we don't beachball
-    let installOut = try await Self.runAdb(b, ["-s", serial, "install", "-r", apk.path])
+    let installOut = try await Self.runAdb(b, ["-s", serial, "install", "-r", apk.path], timeout: 60)
     if installOut.contains("Success") {
       log.notice("[coordinator] agent APK installed")
       return
@@ -578,7 +578,7 @@ final class SessionCoordinator: ObservableObject {
 
     // Fallback: push to Downloads and open installer
     log.warning("[coordinator] adb install failed (\(installOut.prefix(200))), pushing to Downloads...")
-    _ = try await Self.runAdb(b, ["-s", serial, "push", apk.path, "/sdcard/Download/app-debug.apk"])
+    _ = try await Self.runAdb(b, ["-s", serial, "push", apk.path, "/sdcard/Download/app-debug.apk"], timeout: 30)
 
     _ = try? await adb.shell(
       "am start -a android.intent.action.VIEW -d file:///sdcard/Download/app-debug.apk -t application/vnd.android.package-archive",
@@ -587,7 +587,7 @@ final class SessionCoordinator: ObservableObject {
   }
 
   /// Run adb off the main actor. Returns combined stdout+stderr.
-  private nonisolated static func runAdb(_ url: URL, _ args: [String]) async throws -> String {
+  private nonisolated static func runAdb(_ url: URL, _ args: [String], timeout: TimeInterval) async throws -> String {
     try await withCheckedThrowingContinuation { continuation in
       let pr = Process()
       pr.executableURL = url
@@ -595,17 +595,21 @@ final class SessionCoordinator: ObservableObject {
       let pipe = Pipe()
       pr.standardOutput = pipe
       pr.standardError = pipe
+
+      var done = false
       pr.terminationHandler = { proc in
+        done = true
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let out = String(data: data, encoding: .utf8) ?? ""
-        if proc.terminationStatus == 0 {
-          continuation.resume(returning: out)
-        } else {
-          continuation.resume(returning: out) // non-zero exit is still a valid result for us
-        }
+        continuation.resume(returning: out)
       }
+
       do {
         try pr.run()
+        // Kill if it overruns
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
+          if !done, pr.isRunning { pr.terminate() }
+        }
       } catch {
         continuation.resume(throwing: error)
       }
