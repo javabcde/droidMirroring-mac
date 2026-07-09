@@ -37,7 +37,6 @@ class AgentService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startRootShell()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

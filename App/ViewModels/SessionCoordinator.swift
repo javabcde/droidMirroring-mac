@@ -144,9 +144,20 @@ final class SessionCoordinator: ObservableObject {
     // Agent devices need explicit adb connect before use
     if device.transport == .wifi, device.id.contains(":5555") {
       log.notice("[coordinator] connecting agent device \(device.id)")
-      _ = try? await Self.runAdb(
-        Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb"),
-        ["connect", device.id], timeout: 10)
+      let adbBin = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
+      var connectOut = (try? await Self.runAdb(adbBin, ["connect", device.id], timeout: 10)) ?? ""
+      if !connectOut.contains("connected") {
+        // Connect failed (e.g. after reboot). Try re-enabling via USB.
+        log.notice("[coordinator] agent not reachable, re-enabling via USB")
+        let usbDevs = (try? await adb.listDevices()).filter { $0.transport == .usb } ?? []
+        for usb in usbDevs {
+          _ = try? await Self.runAdb(adbBin, ["-s", usb.id, "tcpip", "5555"], timeout: 10)
+        }
+        if !usbDevs.isEmpty {
+          try? await Task.sleep(nanoseconds: 2_000_000_000)
+          connectOut = (try? await Self.runAdb(adbBin, ["connect", device.id], timeout: 10)) ?? ""
+        }
+      }
     }
     let pick = try? await adb.pickActiveDisplay(serial: device.id)
     let displayId = pick?.id ?? 0
@@ -580,7 +591,6 @@ final class SessionCoordinator: ObservableObject {
     let installOut = try await Self.runAdb(b, ["-s", serial, "install", "-r", apk.path], timeout: 30)
     if installOut.contains("Success") {
       log.notice("[coordinator] agent APK installed")
-      // Enable ADB TCP so the agent can be discovered wirelessly
       _ = try? await Self.runAdb(b, ["-s", serial, "tcpip", "5555"], timeout: 10)
       return
     }
