@@ -13,6 +13,7 @@ public struct WirelessEndpoint: Identifiable, Hashable, Sendable {
     case adb              // _adb._tcp (legacy)
     case tlsConnect       // _adb-tls-connect._tcp (already paired)
     case tlsPairing       // _adb-tls-pairing._tcp (showing pair code)
+    case droidMirror      // _droidmirror._tcp (Agent — ADB TCP enabled)
   }
 
   public let id: String              // "<kind>:<service-name>"
@@ -41,6 +42,7 @@ public final class WirelessBrowser: ObservableObject {
     spin("_adb._tcp", kind: .adb)
     spin("_adb-tls-connect._tcp", kind: .tlsConnect)
     spin("_adb-tls-pairing._tcp", kind: .tlsPairing)
+    spin("_droidmirror._tcp", kind: .droidMirror)
   }
 
   public func stop() {
@@ -57,6 +59,10 @@ public final class WirelessBrowser: ObservableObject {
 
   public var connectableDevices: [WirelessEndpoint] {
     endpoints.filter { $0.kind == .tlsConnect || $0.kind == .adb }
+  }
+
+  public var agentDevices: [WirelessEndpoint] {
+    endpoints.filter { $0.kind == .droidMirror }
   }
 
   // MARK: internals

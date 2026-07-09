@@ -1,0 +1,9 @@
+*.gradle/
+*.apk
+local.properties
+build/
+.gradle/
+app/build/
+app/src/main/assets/libagent.so
+app/src/main/assets/scrcpy-server.jar
+

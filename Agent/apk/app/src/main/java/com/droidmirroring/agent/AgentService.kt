@@ -1,0 +1,201 @@
+package com.droidmirroring.agent
+
+import android.app.*
+import android.content.Context
+import android.content.Intent
+import android.net.nsd.NsdManager
+import android.net.nsd.NsdServiceInfo
+import android.os.Build
+import android.os.IBinder
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import java.io.OutputStream
+import java.net.ServerSocket
+import java.net.Socket
+import java.util.concurrent.CopyOnWriteArrayList
+
+class AgentService : Service() {
+
+    companion object {
+        private const val TAG = "AgentService"
+        private const val NOTIFICATION_ID = 1
+        private const val CHANNEL_ID = "agent_channel"
+        private const val SSE_PORT = 5557
+
+        @Volatile
+        var isRunning = false
+
+        private const val ADB_TCP_PORT = "5555"
+        const val PREFS_NAME = "agent_prefs"
+        const val KEY_PORT = "agent_port"
+
+        val sseClients = CopyOnWriteArrayList<OutputStream>()
+    }
+
+    private var sseThread: Thread? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(TAG, "onStartCommand")
+        isRunning = true
+        startForeground(NOTIFICATION_ID, buildNotification())
+        registerMdns()
+        startSseServer()
+        if (hasRoot()) {
+            enableAdbTcp()
+        } else {
+            Log.w(TAG, "no root, ADB TCP skipped — use manual wireless debugging")
+        }
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterMdns()
+        stopSseServer()
+        if (hasRoot()) disableAdbTcp()
+        isRunning = false
+    }
+
+    private fun hasRoot(): Boolean {
+        return try {
+            val proc = Runtime.getRuntime().exec(arrayOf("/system/bin/su", "-c", "id"))
+            val result = proc.inputStream.bufferedReader().readLine()
+            proc.waitFor()
+            result?.contains("uid=0") == true
+        } catch (_: Exception) { false }
+    }
+
+    private fun enableAdbTcp() {
+        try {
+            val port = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getString(KEY_PORT, ADB_TCP_PORT) ?: ADB_TCP_PORT
+            Log.i(TAG, "enabling ADB TCP on port $port")
+            Runtime.getRuntime().exec(arrayOf(
+                "/system/bin/su", "-c",
+                "setprop service.adb.tcp.port $port && stop adbd && start adbd"
+            ))
+            Log.i(TAG, "ADB TCP enabled")
+        } catch (e: Exception) {
+            Log.e(TAG, "failed to enable ADB TCP", e)
+        }
+    }
+
+    private fun disableAdbTcp() {
+        try {
+            Log.i(TAG, "disabling ADB TCP")
+            Runtime.getRuntime().exec(arrayOf(
+                "/system/bin/su", "-c",
+                "setprop service.adb.tcp.port -1 && stop adbd && start adbd"
+            ))
+            Log.i(TAG, "ADB TCP disabled")
+        } catch (e: Exception) {
+            Log.e(TAG, "failed to disable ADB TCP", e)
+        }
+    }
+
+    private fun startSseServer() {
+        sseThread = Thread({
+            try {
+                val server = ServerSocket(SSE_PORT)
+                Log.i(TAG, "SSE server listening on $SSE_PORT")
+                while (!Thread.interrupted()) {
+                    val client = server.accept()
+                    Thread({
+                        try {
+                            val out = client.getOutputStream()
+                            val input = client.getInputStream()
+                            // Read HTTP request
+                            val request = StringBuilder()
+                            var c: Int
+                            while (input.read().also { c = it } != -1) {
+                                request.append(c.toChar())
+                                if (request.endsWith("\r\n\r\n")) break
+                            }
+                            // Send SSE headers
+                            val headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: keep-alive\r\n\r\n"
+                            out.write(headers.toByteArray())
+                            out.flush()
+                            sseClients.add(out)
+                            // Keep alive until client disconnects
+                            while (input.read() != -1) { /* drain */ }
+                        } catch (_: Exception) {}
+                        sseClients.remove(client.getOutputStream())
+                        try { client.close() } catch (_: Exception) {}
+                    }, "sse-client").apply { isDaemon = true; start() }
+                }
+            } catch (e: Exception) {
+                if (Thread.interrupted()) return@Thread
+                Log.e(TAG, "SSE server error", e)
+            }
+        }, "sse-server").apply { isDaemon = true; start() }
+    }
+
+    private fun stopSseServer() {
+        sseThread?.interrupt()
+        sseThread = null
+        sseClients.clear()
+    }
+
+    private fun registerMdns() {
+        try {
+            val model = getDeviceModel()
+            val nsdManager = getSystemService(Context.NSD_SERVICE) as NsdManager
+            nsdManager.registerService(
+                NsdServiceInfo().apply {
+                    serviceName = model
+                    serviceType = "_droidmirror._tcp"
+                    port = SSE_PORT
+                },
+                NsdManager.PROTOCOL_DNS_SD,
+                object : NsdManager.RegistrationListener {
+                    override fun onServiceRegistered(info: NsdServiceInfo) {
+                        Log.i(TAG, "mDNS registered: ${info.serviceName}")
+                    }
+                    override fun onRegistrationFailed(s: NsdServiceInfo, e: Int) {
+                        Log.e(TAG, "mDNS failed: $e")
+                    }
+                    override fun onServiceUnregistered(s: NsdServiceInfo) {}
+                    override fun onUnregistrationFailed(s: NsdServiceInfo, e: Int) {}
+                })
+            Log.i(TAG, "mDNS registration requested")
+        } catch (e: Exception) {
+            Log.e(TAG, "mDNS error", e)
+        }
+    }
+
+    private fun unregisterMdns() {}
+
+    private fun getDeviceModel(): String {
+        return try {
+            val proc = Runtime.getRuntime().exec(arrayOf("getprop", "ro.product.model"))
+            proc.inputStream.bufferedReader().readLine().trim().ifEmpty { "Android Device" }
+        } catch (_: Exception) { "Android Device" }
+    }
+
+    private fun buildNotification(): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("DroidMirror Agent")
+            .setContentText("服务运行中")
+            .setSmallIcon(R.drawable.ic_stat_agent)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "Agent Service", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "DroidMirror Agent"
+                    setShowBadge(false)
+                })
+        }
+    }
+}

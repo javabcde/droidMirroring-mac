@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="cyan_400">#FF26C6DA</color>
+    <color name="cyan_500">#FF00BCD4</color>
+    <color name="cyan_700">#FF0097A7</color>
+    <color name="dark_surface">#FF1A1C1E</color>
+    <color name="dark_surface_variant">#FF2A2D30</color>
+    <color name="dark_on_surface">#FFE1E3E1</color>
+    <color name="dark_on_surface_variant">#FFC4C7C5</color>
+    <color name="accent_background">#8000BCD4</color>
+    <color name="ic_background">#FF0D1B2A</color>
+</resources>

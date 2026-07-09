@@ -11,10 +11,10 @@ public final class DeviceMonitor: ObservableObject {
   private let adb: ADBClient
   private let adbBinary: URL?
   private var trackTask: Task<Void, Never>?
-  /// Per-serial cache of SDK/manufacturer/model gathered via `getprop`. Skip
-  /// re-querying every time host:track-devices pings us; props are static for
-  /// the device's session.
   private var propsCache: [String: (sdk: Int, manufacturer: String)] = [:]
+
+  public let wirelessBrowser = WirelessBrowser()
+  private var agentDevices: [Device] = []
 
   public init(adb: ADBClient = ADBClient(), adbBinary: URL? = nil) {
     self.adb = adb
@@ -27,11 +27,38 @@ public final class DeviceMonitor: ObservableObject {
     trackTask = Task { [weak self] in
       await self?.trackLoop()
     }
+    wirelessBrowser.start()
+    observeAgentDevices()
   }
 
   public func stop() {
     trackTask?.cancel()
     trackTask = nil
+    wirelessBrowser.stop()
+  }
+
+  private func observeAgentDevices() {
+    Task { [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        guard let self else { return }
+        let agents = self.wirelessBrowser.agentDevices
+        let mapped = agents.map { ep in
+          Device(id: "\(ep.host):5555", model: ep.serviceName, transport: .wifi, state: .online)
+        }
+        // Auto-trust agent devices
+        if !mapped.isEmpty {
+          let hosts = mapped.map { $0.id }
+          var trusted = Set(UserDefaults.standard.stringArray(forKey: "mirror.trustedDeviceSerials") ?? [])
+          let added = hosts.filter { !trusted.contains($0) }
+          if !added.isEmpty {
+            trusted.formUnion(added)
+            UserDefaults.standard.set(Array(trusted), forKey: "mirror.trustedDeviceSerials")
+          }
+        }
+        self.agentDevices = mapped
+      }
+    }
   }
 
   /// Ensure an `adb` server is running on 127.0.0.1:5037. Without it, host:* commands
@@ -74,7 +101,12 @@ public final class DeviceMonitor: ObservableObject {
       let parsed = payload.split(separator: "\n").compactMap(ADBClient.parseDeviceLine)
       let enriched = await enrich(parsed)
       await MainActor.run {
-        self.devices = enriched
+        let agentIds = Set(self.agentDevices.map { $0.id })
+        let filtered = enriched.filter { d in
+          if d.transport == .wifi { return !agentIds.contains(d.id) }
+          return true
+        }
+        self.devices = filtered + self.agentDevices
         self.lastError = nil
       }
     }

@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="32dp">
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Status indicator circle -->
+    <FrameLayout
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_marginBottom="20dp">
+
+        <View
+            android:id="@+id/status_circle"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_gravity="center"
+            android:background="@drawable/status_circle_bg" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/text_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Agent 已停止"
+        android:textColor="@color/dark_on_surface"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:id="@+id/text_address"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="IP: --"
+        android:textColor="@color/dark_on_surface_variant"
+        android:textSize="14sp"
+        android:fontFamily="monospace"
+        android:layout_marginBottom="4dp" />
+
+    <TextView
+        android:id="@+id/text_port"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="端口: 5556"
+        android:textColor="@color/dark_on_surface_variant"
+        android:textSize="14sp"
+        android:fontFamily="monospace"
+        android:layout_marginBottom="28dp" />
+
+    <!-- Port config -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginBottom="28dp">
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="12dp"
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.Dense"
+            app:hintTextColor="@color/cyan_400"
+            app:boxStrokeColor="@color/cyan_400"
+            android:hint="端口">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/edit_port"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:text="5555"
+                android:textColor="@color/dark_on_surface"
+                android:textSize="14sp" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_apply_port"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="应用"
+            android:textColor="@color/cyan_400"
+            app:iconTint="@color/cyan_400" />
+    </LinearLayout>
+
+    <!-- Main switch -->
+    <com.google.android.material.materialswitch.MaterialSwitch
+        android:id="@+id/switch_agent"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Agent 服务"
+        android:textColor="@color/dark_on_surface"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <Space
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+</LinearLayout>
