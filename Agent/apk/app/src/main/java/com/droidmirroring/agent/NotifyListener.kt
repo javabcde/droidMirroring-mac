@@ -11,15 +11,9 @@ import java.net.URL
 class NotifyListener : NotificationListenerService() {
     companion object {
         private const val TAG = "NotifyListener"
-        private const val DEFAULT_PORT = 5556
     }
 
-    private val agentUrl: String
-        get() {
-            val prefs = getSharedPreferences(AgentService.PREFS_NAME, MODE_PRIVATE)
-            val port = (prefs.getString(AgentService.KEY_PORT, "$DEFAULT_PORT") ?: "$DEFAULT_PORT").toIntOrNull() ?: DEFAULT_PORT
-            return "http://127.0.0.1:${port + 1}/notifications"
-        }
+    private val agentUrl = "http://127.0.0.1:5557/notifications"
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         try {

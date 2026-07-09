@@ -111,20 +111,35 @@ class AgentService : Service() {
                         try {
                             val out = client.getOutputStream()
                             val input = client.getInputStream()
-                            // Read HTTP request
                             val request = StringBuilder()
                             var c: Int
                             while (input.read().also { c = it } != -1) {
                                 request.append(c.toChar())
                                 if (request.endsWith("\r\n\r\n")) break
                             }
-                            // Send SSE headers
-                            val headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: keep-alive\r\n\r\n"
-                            out.write(headers.toByteArray())
-                            out.flush()
-                            sseClients.add(out)
-                            // Keep alive until client disconnects
-                            while (input.read() != -1) { /* drain */ }
+                            val isPost = request.startsWith("POST")
+                            if (isPost) {
+                                // Read POST body and broadcast to all SSE clients
+                                val contentLength = request.lines()
+                                    .find { it.startsWith("Content-Length:", ignoreCase = true) }
+                                    ?.substringAfter(":")?.trim()?.toIntOrNull() ?: 0
+                                val body = ByteArray(contentLength)
+                                var read = 0
+                                while (read < contentLength) {
+                                    val n = input.read(body, read, contentLength - read)
+                                    if (n == -1) break else read += n
+                                }
+                                val data = String(body, 0, read)
+                                broadcast("data: $data\n\n")
+                                out.write("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK".toByteArray())
+                            } else {
+                                // SSE GET — keep connection open
+                                val headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: keep-alive\r\n\r\n"
+                                out.write(headers.toByteArray())
+                                out.flush()
+                                sseClients.add(out)
+                                while (input.read() != -1) { /* drain */ }
+                            }
                         } catch (_: Exception) {}
                         sseClients.remove(client.getOutputStream())
                         try { client.close() } catch (_: Exception) {}
@@ -135,6 +150,12 @@ class AgentService : Service() {
                 Log.e(TAG, "SSE server error", e)
             }
         }, "sse-server").apply { isDaemon = true; start() }
+    }
+
+    private fun broadcast(message: String) {
+        for (client in sseClients) {
+            try { client.write(message.toByteArray()); client.flush() } catch (_: Exception) {}
+        }
     }
 
     private fun stopSseServer() {
