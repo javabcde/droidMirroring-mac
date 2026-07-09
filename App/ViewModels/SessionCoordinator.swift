@@ -570,7 +570,7 @@ final class SessionCoordinator: ObservableObject {
     let b = Bundle.main.url(forResource: "adb", withExtension: nil) ?? URL(fileURLWithPath: "/usr/local/bin/adb")
 
     // Try adb install first — off the main actor so we don't beachball
-    let installOut = try await Self.runAdb(b, ["-s", serial, "install", "-r", apk.path], timeout: 60)
+    let installOut = try await Self.runAdb(b, ["-s", serial, "install", "-r", apk.path], timeout: 30)
     if installOut.contains("Success") {
       log.notice("[coordinator] agent APK installed")
       return
